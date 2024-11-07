@@ -104,7 +104,7 @@ class OpenAIHandler(BaseLLM):
 
         The updated information should be added to the extracted_info field.
 
-        Add a field called message which is a markdown formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would proceed to add the information to the knowledge base.
+        Add a field called message which must be a markdown well formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would proceed to add the information to the knowledge base.
 
         Format the response as a JSON object."""
         
@@ -167,7 +167,7 @@ class OpenAIHandler(BaseLLM):
         - Value Add (Yes/no)
         - Personal Gauranty? (yes/no/partial)
 
-        Add a field called message which is a markdown formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would like to add or update the information to the knowledge base. Start the message like the "information is added to the knowledge base" in a more natural tone according to the current user's message.
+        Add a field called message which must be a markdown well formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would like to add or update the information to the knowledge base. Start the message like the "information is added to the knowledge base" in a more natural tone according to the current user's message.
 
         If the user asking for any explanation or any other information, add only the message field in the response and give proper formatted explanation, it is not necessary to give extracted information in the message field unless answering the user's question needs it.
 
