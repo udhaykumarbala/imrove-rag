@@ -1,25 +1,82 @@
 from .base import BaseLLM
-import openai
 from typing import List, Dict, Any
 from openai import OpenAI
 import json
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class OpenAIHandler(BaseLLM):
     def __init__(self, api_key: str):
         self.client = OpenAI(api_key=api_key)  # Initialize client here with API key
+        self.logger = logging.getLogger(__name__)
         
-    def generate_response(self, prompt: str, context: List[Dict[str, str]] = None) -> str:
+    async def generate_response(self, prompt: str, context: List[Dict[str, str]]) -> str:
         messages = []
-        if context:
-            messages.extend([{"role": msg["role"], "content": msg["content"]} for msg in context])
-        messages.append({"role": "user", "content": prompt})
         
-        response = self.client.chat.completions.create(  # Use self.client instead of creating new client
-            model="gpt-4o",
-            messages=messages,
-            temperature=0.7,
-        )
-        return response.choices[0].message.content
+        # Add context messages first
+        messages.extend(context)
+        
+        # Add the current prompt
+        messages.append({
+            "role": "user",
+            "content": prompt
+        })
+        
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            raise
+    
+    async def analyze_intent(self, message: str, conversation: list) -> str:
+        system_message = """Analyze the user's message intent. Consider the conversation history to identify the type of question.
+        Return one of these intents:
+        - 'search': User is asking about specific lenders or providing requirements
+        - 'more_info': User is asking follow-up questions about previously discussed lenders/topics
+        - 'need_requirements': User wants lender recommendations but hasn't provided requirements
+        - 'general_lending': User is asking general questions about lending concepts, processes, or terminology
+        - 'others': Message is completely unrelated to lending or loans
+        
+        Examples:
+        - "What's the difference between fixed and variable rates?" -> 'general_lending'
+        - "Tell me about Kennedy Funding" -> 'search'
+        - "What property types do they accept?" -> 'more_info'
+        - "I need a lender" -> 'need_requirements'
+        - "What's the weather like?" -> 'others'"""
+
+        recent_messages = conversation[-4:] if conversation else []
+        
+        messages = [
+            {"role": "system", "content": system_message},
+            *recent_messages,
+            {"role": "user", "content": f"Analyze intent for: {message}"}
+        ]
+
+        try:
+            response = self.client.chat.completions.create(
+                model='gpt-4o',
+                messages=messages,
+                temperature=0,
+                max_tokens=50
+            )
+            intent = response.choices[0].message.content.strip().lower()
+            
+            # Extract just the intent category
+            for intent_type in ['search', 'more_info', 'need_requirements', 'general_lending', 'others']:
+                if intent_type in intent:
+                    return intent_type
+                    
+            return 'others'
+        except Exception as e:
+            self.logger.error(f"Error analyzing intent: {e}")
+            return 'others'
     
     def extract_document_info(self, text: str) -> Dict[str, str]:
         prompt = """Extract the following information from the loan document text.Add user consent to add the information to the knowledge base as a field called consent mentioned as boolean.  If any information is missing, mark it as "MISSING":
@@ -45,7 +102,7 @@ class OpenAIHandler(BaseLLM):
         - Value Add (Yes/no)
         - Personal Gauranty? (yes/no/partial)
 
-        
+        The updated information should be added to the extracted_info field.
 
         Add a field called message which is a markdown formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would proceed to add the information to the knowledge base.
 
@@ -83,6 +140,8 @@ class OpenAIHandler(BaseLLM):
         
         Previous information:
         {previous_info_str}
+
+        The updated information should be added to the extracted_info field.
         
         Add user consent to add the information to the knowledge base as a field called consent mentioned as boolean.
         If any information is missing, mark it as "MISSING":
