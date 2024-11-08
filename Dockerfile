@@ -4,10 +4,14 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and poppler-utils
 RUN apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
