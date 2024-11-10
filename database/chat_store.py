@@ -66,8 +66,8 @@ class ChatStore:
         self.db = self.client[settings.MONGO_DATABASE]
         self.chat_sessions = self.db.chat_sessions
 
-    def create_session(self, user_id: str) -> ChatSession:
-        session = ChatSession(user_id=user_id)
+    def create_session(self, user_id: str, session_id: str) -> ChatSession:
+        session = ChatSession(user_id=user_id, session_id=session_id, created_at=datetime.utcnow())
         self.chat_sessions.insert_one(session.to_dict())
         return session
 
@@ -75,25 +75,25 @@ class ChatStore:
         session_data = self.chat_sessions.find_one({"_id": ObjectId(session_id)})
         return ChatSession.from_dict(session_data) if session_data else None
 
-    def update_session_messages(self, session_id: str, new_messages: List[ChatMessage]) -> bool:
+    def update_session_messages(self, session_id: str, all_messages: List[ChatMessage]) -> bool:
         """
         Update a chat session with new messages while preserving existing ones
         """
-        session = self.get_session(session_id)
-        if not session:
-            return False
+        # session = self.get_session(session_id)
+        # if not session:
+        #     return False
 
-        # Add new messages to existing ones
-        session.messages.extend(new_messages)
-        session.last_interaction_at = datetime.utcnow()
+        # # Add new messages to existing ones
+        # session.messages.extend(new_messages)
+        last_interaction_at = datetime.utcnow()
 
         # Update in database
         result = self.chat_sessions.update_one(
             {"_id": ObjectId(session_id)},
             {
                 "$set": {
-                    "messages": [msg.to_dict() for msg in session.messages],
-                    "last_interaction_at": session.last_interaction_at
+                    "messages": [msg.to_dict() for msg in all_messages],
+                    "last_interaction_at": last_interaction_at
                 }
             }
         )

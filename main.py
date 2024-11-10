@@ -69,10 +69,13 @@ async def health():
 @timer
 async def upload_document(
     file: UploadFile = File(...),
+    authorization: str = Header(...),
     session_id: Optional[str] = Header(None)
 ):
+    user_id = jwt.decode_token(authorization)["sub"]
     if not session_id:
         session_id = str(uuid.uuid4())
+        chat_store.create_session(user_id, session_id)
     
     content = await file.read()
     text = doc_processor.process_document(content, file.filename)
@@ -257,19 +260,34 @@ async def chat(
     
     # Generate response
     response = await llm.generate_response(request.message, context)
-    
-    # Update conversation history
-    conversation.extend([
+
+    # only new conversarion
+    newConversation = [
         {"role": "user", "content": request.message},
         {"role": "assistant", "content": response}
-    ])
+    ]
+    
+    # Update conversation history
+    conversation.extend(newConversation)
+    
     redis_handler.save_conversation(session_id, conversation)
+    chat_store.update_session_messages(session_id, conversation)
     
     return {
         "response": response,
         "session_id": session_id,
         "intent": intent
     }
+
+@app.get("/sessions")
+async def get_sessions(authorization: str = Header(...), limit: int = 10):
+    user_id = jwt.decode_token(authorization)["sub"]
+    return chat_store.get_user_sessions(user_id, limit)
+
+@app.get("/session")
+async def get_session(authorization: str = Header(...), session_id: str = Form(...)):
+    user_id = jwt.decode_token(authorization)["sub"]
+    return chat_store.get_session(user_id, session_id)
 
 @app.post("/login")
 async def login(email: str = Form(...)):
