@@ -299,7 +299,11 @@ async def get_sessions(authorization: str = Header(...), limit: int = 10):
 @app.get("/session")
 async def get_session(authorization: str = Header(...), session_id: str = Header(...)):
     user_id = jwt.decode_token(authorization)["sub"]
-    return chat_store.get_session(user_id, session_id)
+    session = chat_store.get_session(user_id, session_id)
+    redis_handler.save_session(session_id, session.messages)
+    if session.type == "upload":
+        redis_handler.save_document_info(session_id, session.document_info)
+    return session
 
 @app.post("/update_message_feedback")
 async def update_message_feedback(authorization: str = Header(...), session_id: str = Header(...), message_index: int = Form(...), feedback: str = Form(...)):
