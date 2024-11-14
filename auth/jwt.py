@@ -28,7 +28,7 @@ class JWT:
         if expires_delta:
             expire = datetime.utcnow() + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=15)  # Default 15 min
+            expire = datetime.utcnow() + timedelta(days=1)  # Default 15 min
             
         to_encode.update({
             "exp": expire,

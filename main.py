@@ -75,7 +75,7 @@ async def upload_document(
     user_id = jwt.decode_token(authorization)["sub"]
     if not session_id:
         session_id = str(uuid.uuid4())
-        chat_store.create_session(user_id, session_id)
+        
     
     content = await file.read()
     text = doc_processor.process_document(content, file.filename)
@@ -92,6 +92,9 @@ async def upload_document(
 
     redis_handler.save_previous_info(session_id, document_info)
     redis_handler.save_document_id(session_id, document_id)
+
+    chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=document_info)
+
     
     response = {
         "session_id": session_id,
@@ -141,19 +144,25 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         
         # Time conversation update
         start = perf_counter()
+        # Convert response to string if it's a dict
+        # response_content = str(response) if isinstance(response, dict) else response
+        
         conversation.extend([
             {"role": "user", "content": request.message},
-            {"role": "assistant", "content": response}
+            {"role": "assistant", "content": response.get("message", "")}
         ])
         redis_handler.save_conversation(session_id, conversation)
+        chat_store.update_session_messages(session_id, conversation)
         if response.get("extracted_info", None):
             redis_handler.save_previous_info(session_id, response.get("extracted_info", {}))
+            chat_store.update_session_document_info(session_id, response.get("extracted_info", {}))
         logger.info(f"⏱️ Conversation update took {perf_counter() - start:.2f} seconds")
         
         return {
             "response": response,
             "session_id": session_id
         }
+        
     except Exception as e:
         logger.error(f"Error in upload_chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -162,10 +171,13 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
 @timer
 async def chat(
     request: ChatRequest,
-    session_id: str = Header(...)
+    authorization: str = Header(...),
+    session_id: Optional[str] = Header(None),
 ):
+    user_id = jwt.decode_token(authorization)["sub"]
     if not session_id:
         session_id = str(uuid.uuid4())
+        chat_store.create_session(user_id, session_id, type='chat')
     
     conversation = redis_handler.get_conversation(session_id)
     
@@ -285,9 +297,14 @@ async def get_sessions(authorization: str = Header(...), limit: int = 10):
     return chat_store.get_user_sessions(user_id, limit)
 
 @app.get("/session")
-async def get_session(authorization: str = Header(...), session_id: str = Form(...)):
+async def get_session(authorization: str = Header(...), session_id: str = Header(...)):
     user_id = jwt.decode_token(authorization)["sub"]
     return chat_store.get_session(user_id, session_id)
+
+@app.post("/update_message_feedback")
+async def update_message_feedback(authorization: str = Header(...), session_id: str = Header(...), message_index: int = Form(...), feedback: str = Form(...)):
+    user_id = jwt.decode_token(authorization)["sub"]
+    return chat_store.update_message_feedback(user_id, session_id, message_index, feedback)
 
 @app.post("/login")
 async def login(email: str = Form(...)):
