@@ -5,6 +5,8 @@ import string
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
+from database.chat_store import ChatMessage
+
 class RedisHandler:
     def __init__(self, host: str, port: int, password: str = None):
         self.redis_client = redis.Redis(
@@ -129,3 +131,17 @@ class RedisHandler:
             return True
             
         return False
+    
+    def save_document_info(self, session_id: str, document_info: Dict[str, str]):
+        self.redis_client.setex(
+            f"document_info:{session_id}",
+            3600,  # 1 hour expiry
+            json.dumps(document_info)
+        )
+
+    def save_session(self, session_id: str, messages: List[Dict[str, str]]):
+        self.redis_client.setex(
+            f"session:{session_id}",
+            3600,  # 1 hour expiry
+            json.dumps(messages)
+        )

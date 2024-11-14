@@ -300,7 +300,10 @@ async def get_sessions(authorization: str = Header(...), limit: int = 10):
 async def get_session(authorization: str = Header(...), session_id: str = Header(...)):
     user_id = jwt.decode_token(authorization)["sub"]
     session = chat_store.get_session(user_id, session_id)
-    redis_handler.save_session(session_id, session.messages)
+    # convert session chatMessage to list of dict[role, content]
+    session_messages = [message.to_dict() for message in session.messages]
+    # save session to redis
+    redis_handler.save_session(session_id, session_messages)
     if session.type == "upload":
         redis_handler.save_document_info(session_id, session.document_info)
     return session
