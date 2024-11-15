@@ -28,7 +28,7 @@ class OpenAIHandler(BaseLLM):
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages,
-                temperature=0.7
+                temperature=0.3
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -172,6 +172,8 @@ class OpenAIHandler(BaseLLM):
         All the fields must be in the extracted_info field.
 
         If the user asking for any explanation or any other information, add only the message field in the response and give proper formatted explanation, it is not necessary to give extracted information in the message field unless answering the user's question needs it.
+
+        add a field called is_updated which must be a boolean value to indicate if the information is updated or not in the current conversation compared to the previous information.
 
         Format the response as a JSON object."""
 

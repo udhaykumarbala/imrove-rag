@@ -141,7 +141,7 @@ class ChatStore:
 
     def get_user_sessions(self, user_id: str, limit: int = 10) -> List[ChatSession]:
         """
-        Get user's chat sessions, sorted by last interaction (most recent first)
+        Get user's chat sessions, sorted by last interaction (most recent first), only return the id,session_id, title, type and last_interaction_at
         """
         sessions_data = self.chat_sessions.find(
             {"user_id": user_id}
@@ -150,7 +150,13 @@ class ChatStore:
         sessions = []
         for session in sessions_data:
             session['_id'] = str(session['_id'])
-            sessions.append(ChatSession.from_dict(session))
+            sessions.append({
+                "id": session['_id'],
+                "session_id": session['session_id'],
+                "title": session['title'],
+                "type": session['type'],
+                "last_interaction_at": session['last_interaction_at']
+            })
         
         return sessions
 

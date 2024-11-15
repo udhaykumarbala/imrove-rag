@@ -93,7 +93,14 @@ async def upload_document(
     redis_handler.save_previous_info(session_id, document_info)
     redis_handler.save_document_id(session_id, document_id)
 
+    conversation = [
+        {"role": "user", "content": "Uploaded document"},
+        {"role": "assistant", "content": document_info.get("message", "")}
+    ]
+    redis_handler.save_conversation(session_id, conversation)
+
     chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=document_info)
+    chat_store.update_session_messages(session_id, conversation)
 
     
     response = {
@@ -385,9 +392,9 @@ async def verify_otp(
     token = jwt.create_token(user.id)
         
     if user.name:
-        return {"message": "User created successfully", "is_first_login": False, "token": token}
+        return {"message": "User created successfully", "is_first_login": False, "token": token, "name": user.name}
     else:
-        return {"message": "User created successfully", "is_first_login": True, "token": token}
+        return {"message": "User created successfully", "is_first_login": True, "token": token, "name": ""}
 
 @app.post("/update_user")
 async def update_user(
