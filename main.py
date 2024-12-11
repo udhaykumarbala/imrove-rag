@@ -6,7 +6,7 @@ from time import perf_counter
 import logging
 
 from config import settings
-from llm.openai_handler import OpenAIHandler
+from llm.openai_handler import XAIHandler
 from document_processor.processor import DocumentProcessor
 from database.vector_store import VectorStore
 from memory.redis_handler import RedisHandler
@@ -34,7 +34,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-llm = OpenAIHandler(settings.OPENAI_API_KEY)
+llm = XAIHandler(settings.XAI_API_KEY)
 doc_processor = DocumentProcessor()
 vector_store = VectorStore()
 redis_handler = RedisHandler(
