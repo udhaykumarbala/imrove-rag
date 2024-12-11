@@ -1,5 +1,6 @@
 from .base import BaseLLM
 from typing import List, Dict, Any
+from pydantic import BaseModel
 from openai import OpenAI
 import json
 import logging
@@ -7,11 +8,11 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class OpenAIHandler(BaseLLM):
+class XAIHandler(BaseLLM):
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key)  # Initialize client here with API key
+        self.client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
         self.logger = logging.getLogger(__name__)
-        
+
     async def generate_response(self, prompt: str, context: List[Dict[str, str]]) -> str:
         messages = []
         
@@ -26,7 +27,7 @@ class OpenAIHandler(BaseLLM):
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model="grok-beta",
                 messages=messages,
                 temperature=0.3
             )
@@ -36,6 +37,7 @@ class OpenAIHandler(BaseLLM):
             raise
     
     async def analyze_intent(self, message: str, conversation: list) -> str:
+
         system_message = """Analyze the user's message intent. Consider the conversation history to identify the type of question.
         Return one of these intents:
         - 'search': User is asking about specific lenders or providing requirements
@@ -61,11 +63,12 @@ class OpenAIHandler(BaseLLM):
 
         try:
             response = self.client.chat.completions.create(
-                model='gpt-4o',
+                model="grok-beta",
                 messages=messages,
                 temperature=0,
                 max_tokens=50
             )
+
             intent = response.choices[0].message.content.strip().lower()
             
             # Extract just the intent category
@@ -74,12 +77,13 @@ class OpenAIHandler(BaseLLM):
                     return intent_type
                     
             return 'others'
+
         except Exception as e:
             self.logger.error(f"Error analyzing intent: {e}")
             return 'others'
     
     def extract_document_info(self, text: str) -> Dict[str, str]:
-        prompt = """Extract the following information from the loan document text.Add user consent to add the information to the knowledge base as a field called consent mentioned as boolean.  If any information is missing, mark it as "MISSING":
+        prompt = """Extract the following information from the loan document text. Add user consent to add the information to the knowledge base as a field called consent mentioned as boolean.  If any information is missing, mark it as "MISSING":
         - Company Name
         - Loan Plans (with details)
         - Service Areas
@@ -113,7 +117,7 @@ class OpenAIHandler(BaseLLM):
         ]
         
         response = self.client.chat.completions.create(  # Use self.client here too
-            model="gpt-4o",
+            model="grok-beta",
             messages=messages,
             temperature=0
         )
@@ -128,7 +132,6 @@ class OpenAIHandler(BaseLLM):
             for k, v in response_dict.items()
         }
 
-        
         return flattened_dict
     
     def extract_document_info_from_conversation(self, prompt: str, conversation: List[Dict[str, str]], previous_info: Dict[str, str]) -> Dict[str, str]:
@@ -193,7 +196,7 @@ class OpenAIHandler(BaseLLM):
         messages.append({"role": "user", "content": prompt})
         
         response = self.client.chat.completions.create(
-            model="gpt-4o",  # Fixed typo in model name from "gpt-4o" to "gpt-4"
+            model="grok-beta",  # Fixed typo in model name from "gpt-4o" to "gpt-4"
             messages=messages,
             temperature=0,
             response_format={ "type": "json_object" } 
