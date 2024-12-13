@@ -9,18 +9,16 @@ from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain_core.prompts import ChatPromptTemplate
 
-from utils.prompt import intent_anlyse_prompt, extract_document_info_prompt, extract_info_from_conversation_prompt
+from utils.prompt import *
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class IntentResponse(BaseModel):
-    intent: str = Field(description="Identified intent of the user's message. Possible values include:\
-- 'search': The user is asking about specific lenders or providing loan requirements.\
-- 'more_info': The user is asking follow-up questions regarding previously discussed lenders or topics.\
-- 'need_requirements': The user is looking for lender recommendations but has not provided enough information or requirements.\
-- 'general_lending': The user is asking general questions about lending processes, terms, or concepts.\
-- 'others': The message is unrelated to lending or loans.")
+    intent: str = Field(description="Identified intent of the user's message.")
+
+class ChatResponse(BaseModel):
+    response: str = Field(description="The response generated for the user based on their input, providing relevant information or assistance.")
 
 class ContactInformation(BaseModel):
     person: str = Field(description="Name of the contact person for the loan-related queries.")
@@ -71,75 +69,126 @@ class XAIHandler(BaseLLM):
             )
         self.logger = logging.getLogger(__name__)
 
-    async def generate_response(self, prompt: str, context: List[Dict[str, str]]) -> str:
-        messages = []
-        
-        # Add context messages first
-        messages.extend(context)
-        
-        # Add the current prompt
-        messages.append({
-            "role": "user",
-            "content": prompt
-        })
-        
+    async def generate_response(self, intent: str, conversation: str, kb_result: str) -> str:
         try:
-            response = self.client.chat.completions.create(
-                model="grok-beta",
-                messages=messages,
-                temperature=0.3
-            )
-            return response.choices[0].message.content
+            prompt = ChatPromptTemplate.from_messages([("system", general_help_prompt)])
+            response = { "response": "" }
+
+            if intent == "general_lending":
+                prompt = ChatPromptTemplate.from_messages([("system", intent_anlyse_prompt)])
+                chain = prompt | self.client.with_structured_output(ChatResponse)
+                response = chain.invoke({ "conversation": conversation })
+
+            elif intent == "search" or "more_info":
+                prompt = ChatPromptTemplate.from_messages([("system", search_prompt)])
+                chain = prompt | self.client.with_structured_output(ChatResponse)
+                response = chain.invoke({ "conversation": conversation, "relevant_lenders": kb_result })
+
+            elif intent == "need_requirements":
+                prompt = ChatPromptTemplate.from_messages([("system", need_requirement_prompt)])
+                chain = prompt | self.client.with_structured_output(ChatResponse)
+                response = chain.invoke({ "conversation": conversation })
+
+            else: 
+                chain = prompt | self.client.with_structured_output(ChatResponse)
+                response = chain.invoke({ "conversation": conversation })
+
+            return response["response"]
+
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             raise
     
     async def analyze_intent(self, message: str, conversation: list) -> str:
-        
         try:
             recent_messages = conversation[-4:] if conversation else []
+            recent_messages_str = ""
+
+            if conversation and len(conversation):
+                recent_messages_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in recent_messages)
 
             prompt = ChatPromptTemplate.from_messages([("system", intent_anlyse_prompt)])
             chain = prompt | self.client.with_structured_output(IntentResponse)
-            response = chain.invoke({"conversation_history": recent_messages, "user_message": message})
-
-            cleaned_output = response.content.strip("```json\n").strip("\n```")
-            parsed_output = json.loads(cleaned_output)
-            
-            #Extract just the intent category
-            for intent_type in ['search', 'more_info', 'need_requirements', 'general_lending', 'others']:
-                if intent_type in parsed_output["intent"]:
-                    return intent_type
+            response = chain.invoke({"conversation_history": recent_messages_str, "user_message": message})
                     
-            return 'others'
+            return response['intent']
 
         except Exception as e:
             self.logger.error(f"Error analyzing intent: {e}")
-            return 'others'
+            return "other"
 
     def extract_document_info(self, text: str) -> Dict[str, str]:
-        
-        prompt = ChatPromptTemplate.from_messages([("system", extract_document_info_prompt)])
-        chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
-        response = chain.invoke({"document_content": text})
+        try:
+            prompt = ChatPromptTemplate.from_messages([("system", extract_document_info_prompt)])
+            chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
+            response = chain.invoke({"document_content": text})
 
-        return response
+            return response
+
+        except Exception as e:
+            self.logger.error(f"Error extracting information from document: {e}")
+            return {}
     
     def extract_document_info_from_conversation(self, prompt: str, conversation: List[Dict[str, str]], previous_info: Dict[str, str]) -> Dict[str, str]:
-        # Format previous info as a readable string
-        previous_info_str = json.dumps(previous_info, indent=2)
-        conversation_str = ""
+        try:
+            # Format previous info as a readable string
+            previous_info_str = json.dumps(previous_info, indent=2)
+            conversation_str = ""
 
-        # Add conversation history
-        if conversation:
-            conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation)
-        
-        conversation_str += "\n user: " + str(prompt)
+            # Add conversation history
+            if conversation:
+                conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation)
+            
+            conversation_str += "\n user: " + str(prompt)
 
-        prompt = ChatPromptTemplate.from_messages([("system", extract_info_from_conversation_prompt)])
-        chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
-        response = chain.invoke({"previous_info": previous_info_str, "conversation": conversation_str})
+            prompt = ChatPromptTemplate.from_messages([("system", extract_info_from_conversation_prompt)])
+            chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
+            response = chain.invoke({"previous_info": previous_info_str, "conversation": conversation_str})
 
-        return response
+            return response
+
+        except Exception as e:
+            self.logger.error(f"Error extracting information from conversation: {e}")
+            return previous_info
 
 
+class XAIVisionHandler(BaseLLM):
+    def __init__(self, api_key: str):
+        self.client = OpenAI(
+            base_url="https://api.x.ai/v1", 
+            api_key=api_key,
+        )
+        self.logger = logging.getLogger(__name__)
+
+    def ocr(self, image_path):
+        base64_image = self._encode_image(image_path)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}",
+                            "detail": "high",
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": image_ocr_prompt,
+                    },
+                ],
+            },
+        ]
+        ocr_content = self.client.chat.completions.create(
+            model="grok-vision-beta",
+            messages=messages,
+            temperature=0.01,
+        )
+        return ocr_content
+
+
+    def _encode_image(self, image_path):
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+        return encoded_string
