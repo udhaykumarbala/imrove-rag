@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 import json
 import logging
+import base64
 
 from langchain_openai import ChatOpenAI
 from langchain_core.utils.function_calling import convert_to_openai_function
@@ -21,34 +22,34 @@ class ChatResponse(BaseModel):
     response: str = Field(description="The response generated for the user based on their input, providing relevant information or assistance.")
 
 class ContactInformation(BaseModel):
-    person: str = Field(description="Name of the contact person for the loan-related queries.")
-    address: str = Field(description="Physical address of the company or branch offering the loan services.")
-    phone_number: str = Field(description="Contact phone number for loan inquiries.")
-    website: str = Field(description="Official website of the company providing the loan.")
-    email: str = Field(description="Email address for correspondence regarding loan services.")
+    person: str = Field(description="Name of the contact person for the loan-related queries.", default="MISSING")
+    address: str = Field(description="Physical address of the company or branch offering the loan services.", default="MISSING")
+    phone_number: str = Field(description="Contact phone number for loan inquiries.", default="MISSING")
+    website: str = Field(description="Official website of the company providing the loan.", default="MISSING")
+    email: str = Field(description="Email address for correspondence regarding loan services.", default="MISSING")
 
 class DataFromDoc(BaseModel):
-    company_name: str = Field(description="Name of the company providing the loan services.")
-    loan_plans: str = Field(description="Details of the loan plans offered.")
-    service_area: str = Field(description="Geographical regions where the company provides its loan services.")
-    credit_score_requirements: str = Field(description="Minimum credit score required to qualify for the loan.")
-    loan_minimum_amount: str = Field(description="The minimum loan amount that can be availed.")
-    loan_maximum_amount: str = Field(description="The maximum loan amount that can be availed.")
-    loan_to_value_ratio: str = Field(description="Loan-to-Value (LTV) ratio, typically expressed as a percentage.")
-    application_requirements: str = Field(description="List of documents or criteria required to apply for the loan.")
-    guidelines: str = Field(description="Guidelines and instructions related to the loan application process.")
-    contact_information: ContactInformation = Field(description="Details for contacting the company, including name, phone, address and email.")
-    property_types: str = Field(description="Types of properties eligible for loans, such as residential, commercial, etc.")
-    interest_rates: str = Field(description="Details about the interest rates applicable to the loan.")
-    points_charged: str = Field(description="Points or fees charged on the loan, often expressed as a percentage of the loan amount.")
-    liquidity_requirements: str = Field(description="Minimum liquidity required by the borrower to qualify for the loan.")
-    loan_to_cost_ratio: str = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage.")
-    debt_service_coverage_ration: str = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.")
-    loan_term: str = Field(description="Duration of the loan, usually expressed in months or years.")
-    amortization: str = Field(description="Details of the amortization schedule, specifying how the loan will be repaid.")
-    construction: str = Field(description="Indicates whether the loan is applicable for construction projects (yes/no).")
-    value_add: str = Field(description="Indicates whether the loan is applicable for value-add projects (yes/no).")
-    personal_guarantee: str = Field(description="Specifies if a personal guarantee is required for the loan (yes/no/partial).")
+    company_name: str = Field(description="Name of the company providing the loan services.", default="MISSING")
+    loan_plans: str = Field(description="Details of the loan plans offered.", default="MISSING")
+    service_area: str = Field(description="Geographical regions where the company provides its loan services.", default="MISSING")
+    credit_score_requirements: str = Field(description="Minimum credit score required to qualify for the loan.", default="MISSING")
+    loan_minimum_amount: str = Field(description="The minimum loan amount that can be availed.", default="MISSING")
+    loan_maximum_amount: str = Field(description="The maximum loan amount that can be availed.", default="MISSING")
+    loan_to_value_ratio: str = Field(description="Loan-to-Value (LTV) ratio, typically expressed as a percentage.", default="MISSING")
+    application_requirements: str = Field(description="List of documents or criteria required to apply for the loan.", default="MISSING")
+    guidelines: str = Field(description="Guidelines and instructions related to the loan application process.", default="MISSING")
+    contact_information: ContactInformation = Field(description="Details for contacting the company, including name, phone, address and email.", default="MISSING")
+    property_types: str = Field(description="Types of properties eligible for loans, such as residential, commercial, etc.", default="MISSING")
+    interest_rates: str = Field(description="Details about the interest rates applicable to the loan.", default="MISSING")
+    points_charged: str = Field(description="Points or fees charged on the loan, often expressed as a percentage of the loan amount.", default="MISSING")
+    liquidity_requirements: str = Field(description="Minimum liquidity required by the borrower to qualify for the loan.", default="MISSING")
+    loan_to_cost_ratio: str = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage.", default="MISSING")
+    debt_service_coverage_ration: str = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.", default="MISSING")
+    loan_term: str = Field(description="Duration of the loan, usually expressed in months or years.", default="MISSING")
+    amortization: str = Field(description="Details of the amortization schedule, specifying how the loan will be repaid.", default="MISSING")
+    construction: str = Field(description="Indicates whether the loan is applicable for construction projects (yes/no).", default="MISSING")
+    value_add: str = Field(description="Indicates whether the loan is applicable for value-add projects (yes/no).", default="MISSING")
+    personal_guarantee: str = Field(description="Specifies if a personal guarantee is required for the loan (yes/no/partial).", default="MISSING")
 
 class ExtractDocInfoResponse(BaseModel):
     extracted_info: DataFromDoc = Field(description="Data extracted from Loan document")
@@ -152,7 +153,7 @@ class XAIHandler(BaseLLM):
             return previous_info
 
 
-class XAIVisionHandler(BaseLLM):
+class XAIVisionHandler:
     def __init__(self, api_key: str):
         self.client = OpenAI(
             base_url="https://api.x.ai/v1", 
@@ -186,7 +187,6 @@ class XAIVisionHandler(BaseLLM):
             temperature=0.01,
         )
         return ocr_content
-
 
     def _encode_image(self, image_path: str) -> str:
         with open(image_path, "rb") as image_file:

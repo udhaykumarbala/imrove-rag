@@ -86,9 +86,6 @@ async def upload_document(
     document_id = str(uuid.uuid4())
     if document_info.get("consent", False):
         vector_store.store_document(document_info, document_id)
-    
-    # Check for missing information
-    missing_fields = [k for k, v in document_info.items() if v == "MISSING"]
 
     redis_handler.save_previous_info(session_id, document_info)
     redis_handler.save_document_id(session_id, document_id)
@@ -106,8 +103,10 @@ async def upload_document(
     response = {
         "session_id": session_id,
         "document_id": document_id,
-        "missing_fields": missing_fields,
-        "extracted_info": document_info
+        "extracted_info": document_info['extracted_info'],
+        "message": document_info['message'],
+        "consent": document_info['consent'],
+        "is_updated": document_info['is_updated']
     }
 
     print(f"🔥response: {response}")
@@ -169,7 +168,8 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         logger.info(f"⏱️ Conversation update took {perf_counter() - start:.2f} seconds")
         
         return {
-            "response": response,
+            "extracted_info": response['extracted_info'],
+            "message": response['message'],
             "session_id": session_id
         }
         
