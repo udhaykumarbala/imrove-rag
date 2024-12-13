@@ -6,7 +6,7 @@ from time import perf_counter
 import logging
 
 from config import settings
-from llm.openai_handler import OpenAIHandler
+from llm.xai_handler import XAIHandler
 from document_processor.processor import DocumentProcessor
 from database.vector_store import VectorStore
 from memory.redis_handler import RedisHandler
@@ -34,7 +34,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-llm = OpenAIHandler(settings.OPENAI_API_KEY)
+llm = XAIHandler(settings.XAI_API_KEY)
 doc_processor = DocumentProcessor()
 vector_store = VectorStore()
 redis_handler = RedisHandler(
@@ -123,6 +123,7 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         conversation = redis_handler.get_conversation(session_id)
         previous_info = redis_handler.get_previous_info(session_id)
         document_id = redis_handler.get_document_id(session_id)
+
         logger.info(f"⏱️ Redis retrieval took {perf_counter() - start:.2f} seconds")
 
         print(f"🔥conversation: {conversation}\n")
@@ -135,6 +136,7 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
             conversation=conversation,
             previous_info=previous_info
         )
+
         logger.info(f"⏱️ LLM processing took {perf_counter() - start:.2f} seconds")
         
         # Time vector store operations
@@ -151,18 +153,19 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         
         # Time conversation update
         start = perf_counter()
-        # Convert response to string if it's a dict
-        # response_content = str(response) if isinstance(response, dict) else response
         
         conversation.extend([
             {"role": "user", "content": request.message},
             {"role": "assistant", "content": response.get("message", "")}
         ])
+
         redis_handler.save_conversation(session_id, conversation)
         chat_store.update_session_messages(session_id, conversation)
+
         if response.get("extracted_info", None):
             redis_handler.save_previous_info(session_id, response.get("extracted_info", {}))
             chat_store.update_session_document_info(session_id, response.get("extracted_info", {}))
+
         logger.info(f"⏱️ Conversation update took {perf_counter() - start:.2f} seconds")
         
         return {
@@ -187,104 +190,31 @@ async def chat(
         chat_store.create_session(user_id, session_id, type='chat')
     
     conversation = redis_handler.get_conversation(session_id)
-    
-    # Define system prompts
-    GENERAL_LENDING_PROMPT = """You are a knowledgeable lending expert. Your role is to:
-    1. Provide clear, accurate explanations of lending concepts, terms, and processes
-    2. Use simple language while maintaining technical accuracy
-    3. Give practical examples when helpful
-    4. Break down complex topics into understandable parts
-    5. Provide balanced information about pros and cons
-    6. Avoid making specific recommendations unless explicitly asked
-    7. Always maintain a professional yet approachable tone
-
-    Focus on educating users about:
-    - Loan types and their characteristics
-    - Common lending terms and definitions
-    - General lending processes and requirements
-    - Industry standard practices
-    - Important considerations for borrowers
-    """
-
-    GENERAL_HELP_PROMPT = """You are a helpful lending assistant. Your role is to:
-    1. Provide general information about lending, loans, and the lending process
-    2. Only search for specific lenders when user provides at least one specific requirement
-    3. Always maintain a helpful and professional tone
-
-    If the user hasn't provided any specific requirements but is asking about lenders, 
-    politely ask them for more information to provide personalized recommendations."""
-
-    NEED_REQUIREMENTS_PROMPT = """You are a helpful lending assistant. 
-    If users want specific lender recommendations, ask them for requirements like:
-       - Loan amount needed
-       - Purpose of loan (business, personal, real estate, etc.)
-       - Preferred loan term
-       - Location
-       - Credit score range (if they're comfortable sharing)
-       - Any specific requirements they have
-    
-    Do not search for specific lenders without requirements.
-    """
-
-    SEARCH_PROMPT = """You are a helpful lending assistant. Based on the user's requirements, 
-    here are relevant lenders from our knowledge base with in the single quotes: '{kb_results}'
-
-    Please analyze these options and provide a curated response that:
-    1. Matches their requirements
-    2. Highlights key benefits
-    3. Points out important considerations
-    4. Suggests next steps
-
-    Do not search for specific lenders without requirements or names mentioned in current or previous conversation, instead ask for requirements to search for relevant lenders.
-
-    Keep the response clear and concise."""
+    conversation_str = ""
+    if conversation and len(conversation):
+        conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation)
 
     # Analyze intent
     intent = await llm.analyze_intent(request.message, conversation)
     
-    # Generate appropriate response based on intent
-    context = []
+    kb_result_str = ""
     
-    if intent == 'general_lending':
-        context.append({
-            "role": "system",
-            "content": GENERAL_LENDING_PROMPT
-        })
-    elif intent == 'search' or intent == 'more_info':
-        kb_results = vector_store.search_documents(request.message) if request.context_type in ["kb", "both"] else []
-        if kb_results:
-            context.append({
-                "role": "system",
-                "content": SEARCH_PROMPT.format(kb_results=str(kb_results))
-            })
-    elif intent == 'others':
-        # Either general help or need to ask for requirements
+    if intent == 'others':
         return {
             "response": "I'm sorry, I don't understand that. Please ask me about lending or loan options.",
             "session_id": session_id,
             "intent": intent
         }
-    elif intent == 'need_requirements':
-        context.append({
-            "role": "system",
-            "content": SEARCH_PROMPT
-        })
-    else:
-        context.append({
-            "role": "system",
-            "content": GENERAL_HELP_PROMPT
-        })
+
+    elif intent == 'search' or intent == 'more_info':
+        kb_results = vector_store.search_documents(request.message) if request.context_type in ["kb", "both"] else []
+        if kb_results:
+            kb_result_str = str(kb_results)
     
-    context.extend(conversation)
-    
-    # Generate response
-    response = await llm.generate_response(request.message, context)
+    response = await llm.generate_response(request.message, conversation_str, kb_result_str)
 
     # only new conversarion
-    newConversation = [
-        {"role": "user", "content": request.message},
-        {"role": "assistant", "content": response}
-    ]
+    newConversation = [ {"role": "user", "content": request.message}, {"role": "assistant", "content": response}]
     
     # Update conversation history
     conversation.extend(newConversation)
