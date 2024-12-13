@@ -65,6 +65,10 @@ class LoginRequest(BaseModel):
 async def health():
     return {"status": "ok"}
 
+@app.get('/test')
+async def test_fn():
+    return {}
+
 @app.post("/upload")
 @timer
 async def upload_document(
@@ -123,6 +127,7 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         conversation = redis_handler.get_conversation(session_id)
         previous_info = redis_handler.get_previous_info(session_id)
         document_id = redis_handler.get_document_id(session_id)
+
         logger.info(f"⏱️ Redis retrieval took {perf_counter() - start:.2f} seconds")
 
         print(f"🔥conversation: {conversation}\n")
@@ -135,6 +140,7 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
             conversation=conversation,
             previous_info=previous_info
         )
+
         logger.info(f"⏱️ LLM processing took {perf_counter() - start:.2f} seconds")
         
         # Time vector store operations
@@ -151,18 +157,19 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         
         # Time conversation update
         start = perf_counter()
-        # Convert response to string if it's a dict
-        # response_content = str(response) if isinstance(response, dict) else response
         
         conversation.extend([
             {"role": "user", "content": request.message},
             {"role": "assistant", "content": response.get("message", "")}
         ])
+
         redis_handler.save_conversation(session_id, conversation)
         chat_store.update_session_messages(session_id, conversation)
+
         if response.get("extracted_info", None):
             redis_handler.save_previous_info(session_id, response.get("extracted_info", {}))
             chat_store.update_session_document_info(session_id, response.get("extracted_info", {}))
+
         logger.info(f"⏱️ Conversation update took {perf_counter() - start:.2f} seconds")
         
         return {

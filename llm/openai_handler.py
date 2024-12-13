@@ -1,16 +1,74 @@
 from .base import BaseLLM
 from typing import List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
 import json
 import logging
 
+from langchain_openai import ChatOpenAI
+from langchain_core.utils.function_calling import convert_to_openai_function
+from langchain_core.prompts import ChatPromptTemplate
+
+from utils.prompt import intent_anlyse_prompt, extract_document_info_prompt, extract_info_from_conversation_prompt
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class IntentResponse(BaseModel):
+    intent: str = Field(description="Identified intent of the user's message. Possible values include:\
+- 'search': The user is asking about specific lenders or providing loan requirements.\
+- 'more_info': The user is asking follow-up questions regarding previously discussed lenders or topics.\
+- 'need_requirements': The user is looking for lender recommendations but has not provided enough information or requirements.\
+- 'general_lending': The user is asking general questions about lending processes, terms, or concepts.\
+- 'others': The message is unrelated to lending or loans.")
+
+class ContactInformation(BaseModel):
+    person: str = Field(description="Name of the contact person for the loan-related queries.")
+    address: str = Field(description="Physical address of the company or branch offering the loan services.")
+    phone_number: str = Field(description="Contact phone number for loan inquiries.")
+    website: str = Field(description="Official website of the company providing the loan.")
+    email: str = Field(description="Email address for correspondence regarding loan services.")
+
+class DataFromDoc(BaseModel):
+    company_name: str = Field(description="Name of the company providing the loan services.")
+    loan_plans: str = Field(description="Details of the loan plans offered.")
+    service_area: str = Field(description="Geographical regions where the company provides its loan services.")
+    credit_score_requirements: str = Field(description="Minimum credit score required to qualify for the loan.")
+    loan_minimum_amount: str = Field(description="The minimum loan amount that can be availed.")
+    loan_maximum_amount: str = Field(description="The maximum loan amount that can be availed.")
+    loan_to_value_ratio: str = Field(description="Loan-to-Value (LTV) ratio, typically expressed as a percentage.")
+    application_requirements: str = Field(description="List of documents or criteria required to apply for the loan.")
+    guidelines: str = Field(description="Guidelines and instructions related to the loan application process.")
+    contact_information: ContactInformation = Field(description="Details for contacting the company, including name, phone, address and email.")
+    property_types: str = Field(description="Types of properties eligible for loans, such as residential, commercial, etc.")
+    interest_rates: str = Field(description="Details about the interest rates applicable to the loan.")
+    points_charged: str = Field(description="Points or fees charged on the loan, often expressed as a percentage of the loan amount.")
+    liquidity_requirements: str = Field(description="Minimum liquidity required by the borrower to qualify for the loan.")
+    loan_to_cost_ratio: str = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage.")
+    debt_service_coverage_ration: str = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.")
+    loan_term: str = Field(description="Duration of the loan, usually expressed in months or years.")
+    amortization: str = Field(description="Details of the amortization schedule, specifying how the loan will be repaid.")
+    construction: str = Field(description="Indicates whether the loan is applicable for construction projects (yes/no).")
+    value_add: str = Field(description="Indicates whether the loan is applicable for value-add projects (yes/no).")
+    personal_guarantee: str = Field(description="Specifies if a personal guarantee is required for the loan (yes/no/partial).")
+
+class ExtractDocInfoResponse(BaseModel):
+    extracted_info: DataFromDoc = Field(description="Data extracted from Loan document")
+    message: str = Field(description="Generated User message")
+    consent: bool = Field(default=False)
+    is_updated: bool = Field(default=False)
+
 class XAIHandler(BaseLLM):
     def __init__(self, api_key: str):
-        self.client = OpenAI(api_key=api_key, base_url="https://api.x.ai/v1")
+        self.client = ChatOpenAI(
+            model="grok-beta", 
+            temperature=0, 
+            timeout=None, 
+            max_retries=3, 
+            max_tokens=None, 
+            base_url="https://api.x.ai/v1", 
+            api_key=api_key,
+            )
         self.logger = logging.getLogger(__name__)
 
     async def generate_response(self, prompt: str, context: List[Dict[str, str]]) -> str:
@@ -37,43 +95,20 @@ class XAIHandler(BaseLLM):
             raise
     
     async def analyze_intent(self, message: str, conversation: list) -> str:
-
-        system_message = """Analyze the user's message intent. Consider the conversation history to identify the type of question.
-        Return one of these intents:
-        - 'search': User is asking about specific lenders or providing requirements
-        - 'more_info': User is asking follow-up questions about previously discussed lenders/topics
-        - 'need_requirements': User wants lender recommendations but hasn't provided requirements
-        - 'general_lending': User is asking general questions about lending concepts, processes, or terminology
-        - 'others': Message is completely unrelated to lending or loans
         
-        Examples:
-        - "What's the difference between fixed and variable rates?" -> 'general_lending'
-        - "Tell me about Kennedy Funding" -> 'search'
-        - "What property types do they accept?" -> 'more_info'
-        - "I need a lender" -> 'need_requirements'
-        - "What's the weather like?" -> 'others'"""
-
-        recent_messages = conversation[-4:] if conversation else []
-        
-        messages = [
-            {"role": "system", "content": system_message},
-            *recent_messages,
-            {"role": "user", "content": f"Analyze intent for: {message}"}
-        ]
-
         try:
-            response = self.client.chat.completions.create(
-                model="grok-beta",
-                messages=messages,
-                temperature=0,
-                max_tokens=50
-            )
+            recent_messages = conversation[-4:] if conversation else []
 
-            intent = response.choices[0].message.content.strip().lower()
+            prompt = ChatPromptTemplate.from_messages([("system", intent_anlyse_prompt)])
+            chain = prompt | self.client.with_structured_output(IntentResponse)
+            response = chain.invoke({"conversation_history": recent_messages, "user_message": message})
+
+            cleaned_output = response.content.strip("```json\n").strip("\n```")
+            parsed_output = json.loads(cleaned_output)
             
-            # Extract just the intent category
+            #Extract just the intent category
             for intent_type in ['search', 'more_info', 'need_requirements', 'general_lending', 'others']:
-                if intent_type in intent:
+                if intent_type in parsed_output["intent"]:
                     return intent_type
                     
             return 'others'
@@ -81,139 +116,30 @@ class XAIHandler(BaseLLM):
         except Exception as e:
             self.logger.error(f"Error analyzing intent: {e}")
             return 'others'
-    
+
     def extract_document_info(self, text: str) -> Dict[str, str]:
-        prompt = """Extract the following information from the loan document text. Add user consent to add the information to the knowledge base as a field called consent mentioned as boolean.  If any information is missing, mark it as "MISSING":
-        - Company Name
-        - Loan Plans (with details)
-        - Service Areas
-        - Credit Score Requirements
-        - Loan Minimum Amount
-        - Loan Maximum Amount
-        - LTV (Loan-to-Value ratio)
-        - Application Requirements
-        - Guidelines
-        - Contact Information (Person, Phone, Email)
-        - Property Types
-        - Interest Rates
-        - Points Charged
-        - Liquidity Requirements
-        - LTC (Loan-to-Cost ratio)
-        - DSCR Minimum (Debt Service Coverage Ratio)
-        - Loan Term
-        - Amortization
-        - Construction (yes/no)
-        - Value Add (Yes/no)
-        - Personal Gauranty? (yes/no/partial)
-
-        The updated information should be added to the extracted_info field.
-
-        Add a field called message which must be a markdown well formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would proceed to add the information to the knowledge base.
-
-        Format the response as a JSON object."""
         
-        messages = [
-            {"role": "user", "content": f"{prompt}\n\nText: {text}"}
-        ]
-        
-        response = self.client.chat.completions.create(  # Use self.client here too
-            model="grok-beta",
-            messages=messages,
-            temperature=0
-        )
-        
-        content = response.choices[0].message.content
-        content = content.replace('```json\n', '').replace('\n```', '')
-        response_dict = json.loads(content)  # Use json.loads instead of eval
-        
-        # Flatten any nested dictionaries to strings
-        flattened_dict = {
-            k: json.dumps(v) if isinstance(v, dict) else str(v)
-            for k, v in response_dict.items()
-        }
+        prompt = ChatPromptTemplate.from_messages([("system", extract_document_info_prompt)])
+        chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
+        response = chain.invoke({"document_content": text})
 
-        return flattened_dict
+        return response
     
     def extract_document_info_from_conversation(self, prompt: str, conversation: List[Dict[str, str]], previous_info: Dict[str, str]) -> Dict[str, str]:
         # Format previous info as a readable string
         previous_info_str = json.dumps(previous_info, indent=2)
-        
-        system_prompt = f"""
-        Extract the information from the conversation and update/merge with the previous information.
-        
-        Previous information:
-        {previous_info_str}
-
-        The updated information should be added to the extracted_info field.
-        
-        Add user consent to add the information to the knowledge base as a field called consent mentioned as boolean.
-        If any information is missing, mark it as "MISSING":
-        - Company Name
-        - Loan Plans (with details)
-        - Service Areas
-        - Credit Score Requirements
-        - Loan Minimum Amount
-        - Loan Maximum Amount
-        - LTV (Loan-to-Value ratio)
-        - Application Requirements
-        - Guidelines
-        - Contact Information (Person, Phone, Email)
-        - Property Types
-        - Interest Rates
-        - Points Charged
-        - Liquidity Requirements
-        - LTC (Loan-to-Cost ratio)
-        - DSCR Minimum (Debt Service Coverage Ratio)
-        - Loan Term
-        - Amortization
-        - Construction (yes/no)
-        - Value Add (Yes/no)
-        - Personal Gauranty? (yes/no/partial)
-
-        Add a field called message which must be a markdown well formatted response to the user showing the Information extracted and asking for the required information in a polite manner if any information is missing and ask if they would like to add or update the information to the knowledge base. Start the message like the "information is added to the knowledge base" in a more natural tone according to the current user's message.
-
-        All the fields must be in the extracted_info field.
-
-        If the user asking for any explanation or any other information, add only the message field in the response and give proper formatted explanation, it is not necessary to give extracted information in the message field unless answering the user's question needs it.
-
-        add a field called is_updated which must be a boolean value to indicate if the information is updated or not in the current conversation compared to the previous information.
-
-        Format the response as a JSON object."""
-
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
+        conversation_str = ""
 
         # Add conversation history
         if conversation:
-            for msg in conversation:
-                messages.append({
-                    "role": msg["role"],
-                    "content": str(msg["content"])  # Ensure content is string
-                })
+            conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation)
         
-        # Add current prompt
-        messages.append({"role": "user", "content": prompt})
-        
-        response = self.client.chat.completions.create(
-            model="grok-beta",  # Fixed typo in model name from "gpt-4o" to "gpt-4"
-            messages=messages,
-            temperature=0,
-            response_format={ "type": "json_object" } 
-        )
-        
-        content = response.choices[0].message.content
-        print(f"🔥llm response: {content}")
-        if content.startswith('```json'):
-            content = content.replace('```json\n', '').replace('\n```', '')
-        print("\n\n success")
-        response_dict = json.loads(content)
-        print("\n\n success2")
-        # Flatten any nested dictionaries to strings
-        flattened_dict = {
-            k: json.dumps(v) if isinstance(v, dict) else str(v)
-            for k, v in response_dict.items()
-        }
-        
-        return flattened_dict
-    
+        conversation_str += "\n user: " + str(prompt)
+
+        prompt = ChatPromptTemplate.from_messages([("system", extract_info_from_conversation_prompt)])
+        chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
+        response = chain.invoke({"previous_info": previous_info_str, "conversation": conversation_str})
+
+        return response
+
+
