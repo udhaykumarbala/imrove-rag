@@ -45,13 +45,14 @@ You are a data extractor. Your task is to extracted information from the loan do
    - Value Add (Yes/no)
    - Personal Gauranty? (yes/no/partial)
 3. **Generate and return a user message**:  
-   - Present the extracted data in a **well-formatted markdown table** for easy review.  
    - List any fields marked as `MISSING` and politely request the user to provide the missing details, if available.  
    - Ask the user if they would like to proceed with adding the extracted data to the knowledge base. 
+   - Present the extracted data in a **well-formatted markdown** for easy review.  
 4. All the extracted information should be inside `extracted_info` key in a JSON object.
-4. **Ensure your output meets the following criteria**:  
+5. **Ensure your output meets the following criteria**:  
    - **Accuracy**: Extract accurate and relevant information from the loan document content.  
    - **Structure**: Only return the extracted information in a **parsable JSON format**.  
+   - **Formatting**: Return message parameter in well formatted markdown.
 
 %%%
 "{document_content}"
@@ -85,20 +86,21 @@ You are a data extractor. Your task is to update or merge extracted information 
    - Personal Guarantee (yes/no/partial)  
 3. **Update or set the following additional parameters**:  
    - `consent`: A boolean indicating whether the user has agreed to save or add or update the information in the knowledge base.  
-   - `message`: A markdown-formatted response for the user that should:  
+   - `message`: A **markdown-formatted** response for the user that should:  
      - Provide a polite summary of the missing or updated information.  
      - Request any required missing details in a courteous tone.  
      - Ask for the user's consent to add or update the extracted information into the knowledge base.  
      - Start the response naturally based on the user's message, e.g., “The information has been updated...” or “Here's what we found so far...” depending on context.  
 4. **If the user requests explanations or unrelated information**:  
-   - Only update the `message` parameter with a detailed markdown-formatted explanation addressing the user's query.  
+   - Only update the `message` parameter with a detailed **markdown-formatted** explanation addressing the user's query.  
    - Do not include extracted information in the `message` unless it is relevant to answering the user's question.  
 5. **Update the `is_updated` parameter**:  
    - Set this boolean to `true` if any new information is added or existing information is changed.  
    - Set it to `false` if no updates are made in the current conversation.  
 6. **Ensure your output is**:  
    - **Accurate**: Reflect changes or updates based on the user's message while preserving previously extracted information.  
-   - **Structured**: Return the updated information as a parsable JSON object.  
+   - **Structured**: Return the updated information as a parsable JSON object. 
+   - **Formatting**: Return message parameter in well formatted markdown. 
 
 %%%
 "{previous_info}"
