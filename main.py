@@ -211,7 +211,7 @@ async def chat(
         if kb_results:
             kb_result_str = str(kb_results)
     
-    response = await llm.generate_response(request.message, conversation_str, kb_result_str)
+    response = await llm.generate_response(intent, conversation_str, kb_result_str)
 
     # only new conversarion
     newConversation = [ {"role": "user", "content": request.message}, {"role": "assistant", "content": response}]
