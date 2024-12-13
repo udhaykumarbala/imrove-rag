@@ -160,7 +160,7 @@ class XAIVisionHandler(BaseLLM):
         )
         self.logger = logging.getLogger(__name__)
 
-    def ocr(self, image_path):
+    def ocr(self, image_path: str) -> str:
         base64_image = self._encode_image(image_path)
         messages = [
             {
@@ -188,7 +188,7 @@ class XAIVisionHandler(BaseLLM):
         return ocr_content
 
 
-    def _encode_image(self, image_path):
+    def _encode_image(self, image_path: str) -> str:
         with open(image_path, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         return encoded_string
