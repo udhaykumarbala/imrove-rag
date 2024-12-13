@@ -152,7 +152,7 @@ class XAIHandler(BaseLLM):
             return previous_info
 
 
-class XAIVisionHandler(BaseLLM):
+class XAIVisionHandler:
     def __init__(self, api_key: str):
         self.client = OpenAI(
             base_url="https://api.x.ai/v1", 
@@ -186,7 +186,6 @@ class XAIVisionHandler(BaseLLM):
             temperature=0.01,
         )
         return ocr_content
-
 
     def _encode_image(self, image_path: str) -> str:
         with open(image_path, "rb") as image_file:
