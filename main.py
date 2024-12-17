@@ -82,31 +82,33 @@ async def upload_document(
     
     # Extract information using LLM
     document_info = llm.extract_document_info(text)
-    
+    # document_info = document_info.extracted_info
+    extracted_info = document_info.extracted_info
+    print (f"🔥document_info: {extracted_info}")
     document_id = str(uuid.uuid4())
-    if document_info.get("consent", False):
-        vector_store.store_document(document_info, document_id)
+    if document_info.consent:
+        vector_store.store_document(extracted_info.model_dump(), document_id)
 
-    redis_handler.save_previous_info(session_id, document_info)
+    redis_handler.save_previous_info(session_id, extracted_info.model_dump())
     redis_handler.save_document_id(session_id, document_id)
 
     conversation = [
         {"role": "user", "content": "Uploaded document"},
-        {"role": "assistant", "content": document_info.get("message", "")}
+        {"role": "assistant", "content": document_info.message}
     ]
     redis_handler.save_conversation(session_id, conversation)
 
-    chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=document_info)
-    chat_store.update_session_messages(session_id, conversation)
+    chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
+    chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
 
     
     response = {
         "session_id": session_id,
         "document_id": document_id,
-        "extracted_info": document_info['extracted_info'],
-        "message": document_info['message'],
-        "consent": document_info['consent'],
-        "is_updated": document_info['is_updated']
+        "extracted_info": extracted_info.model_dump(),
+        "message": document_info.message,
+        "consent": document_info.consent,
+        "is_updated": document_info.is_updated
     }
 
     print(f"🔥response: {response}")
@@ -139,13 +141,13 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         logger.info(f"⏱️ LLM processing took {perf_counter() - start:.2f} seconds")
         
         # Time vector store operations
-        if response.get("consent", False):
+        if response.consent:
             start = perf_counter()
             try:
                 if not vector_store.check_if_document_exists(document_id):
-                    vector_store.store_document(response, document_id)
+                    vector_store.store_document(response.model_dump(), document_id)
                 else:
-                    vector_store.update_document(response, document_id)
+                    vector_store.update_document(response.model_dump(), document_id)
                 logger.info(f"⏱️ Vector store operation took {perf_counter() - start:.2f} seconds")
             except Exception as e:
                 logger.error(f"Error handling vector store: {e}")
@@ -155,21 +157,21 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
         
         conversation.extend([
             {"role": "user", "content": request.message},
-            {"role": "assistant", "content": response.get("message", "")}
+            {"role": "assistant", "content": response.message}
         ])
 
         redis_handler.save_conversation(session_id, conversation)
-        chat_store.update_session_messages(session_id, conversation)
+        chat_store.update_session_messages(session_id, conversation, "") # title is empty, so it will not be updated
 
-        if response.get("extracted_info", None):
-            redis_handler.save_previous_info(session_id, response.get("extracted_info", {}))
-            chat_store.update_session_document_info(session_id, response.get("extracted_info", {}))
+        if response.extracted_info:
+            redis_handler.save_previous_info(session_id, response.extracted_info.model_dump())
+            chat_store.update_session_document_info(session_id, response.extracted_info.model_dump())
 
         logger.info(f"⏱️ Conversation update took {perf_counter() - start:.2f} seconds")
         
         return {
-            "extracted_info": response['extracted_info'],
-            "message": response['message'],
+            "extracted_info": response.extracted_info.model_dump() if response.extracted_info else None,
+            "message": response.message,
             "session_id": session_id
         }
         
@@ -185,8 +187,10 @@ async def chat(
     session_id: Optional[str] = Header(None),
 ):
     user_id = jwt.decode_token(authorization)["sub"]
+    is_new_session = False
     if not session_id:
         session_id = str(uuid.uuid4())
+        is_new_session = True
         chat_store.create_session(user_id, session_id, type='chat')
     
     conversation = redis_handler.get_conversation(session_id)
@@ -196,7 +200,7 @@ async def chat(
 
     # Analyze intent
     intent = await llm.analyze_intent(request.message, conversation)
-    
+    print(f"🔥intent: {intent}")
     kb_result_str = ""
     
     if intent == 'others':
@@ -210,20 +214,21 @@ async def chat(
         kb_results = vector_store.search_documents(request.message) if request.context_type in ["kb", "both"] else []
         if kb_results:
             kb_result_str = str(kb_results)
+        
+        print(f"🔥kb_result_str: {kb_result_str}")
     
     response = await llm.generate_response(intent, conversation_str, kb_result_str)
 
     # only new conversarion
-    newConversation = [ {"role": "user", "content": request.message}, {"role": "assistant", "content": response}]
-    
+    newConversation = [ {"role": "user", "content": request.message}, {"role": "assistant", "content": response.response}]
     # Update conversation history
     conversation.extend(newConversation)
     
     redis_handler.save_conversation(session_id, conversation)
-    chat_store.update_session_messages(session_id, conversation)
+    chat_store.update_session_messages(session_id, conversation, title=response.chat_title)
     
     return {
-        "response": response,
+        "response": response.response,
         "session_id": session_id,
         "intent": intent
     }

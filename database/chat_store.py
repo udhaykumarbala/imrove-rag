@@ -28,7 +28,7 @@ class ChatMessage:
 class ChatSession:
     def __init__(self, id: str, session_id: str, user_id: str, type: str, messages: List[ChatMessage], 
                  document_id: Optional[str] = None, document_info: Optional[dict] = None,
-                 created_at: Optional[datetime] = None, last_interaction_at: Optional[datetime] = None):
+                 created_at: Optional[datetime] = None, last_interaction_at: Optional[datetime] = None, title: str = "new chat"):
         self.id = id
         self.session_id = session_id
         self.user_id = user_id
@@ -38,7 +38,7 @@ class ChatSession:
         self.document_info = document_info
         self.created_at = created_at or datetime.now()
         self.last_interaction_at = last_interaction_at or self.created_at
-        self.title = f"session_{session_id}"
+        self.title = title
 
     def to_dict(self):
         return {
@@ -87,7 +87,7 @@ class ChatSession:
             created_at=created_at,
             last_interaction_at=last_interaction_at
         )
-        session.title = data.get("title", f"session_{session.id}")
+        session.title = data.get("title", f"new chat")
         return session
 
 class ChatStore:
@@ -103,6 +103,7 @@ class ChatStore:
             user_id=user_id,
             type=type,
             messages=[],
+            title="new chat",
             document_id=document_id,
             document_info=document_info,
             created_at=datetime.utcnow()
@@ -114,11 +115,19 @@ class ChatStore:
         session_data = self.chat_sessions.find_one({"session_id": session_id, "user_id": user_id})
         return ChatSession.from_dict(session_data) if session_data else None
 
-    def update_session_messages(self, session_id: str, all_messages: List[ChatMessage]) -> bool:
+    def update_session_messages(self, session_id: str, all_messages: List[ChatMessage], title: str) -> bool:
         """
         Update a chat session with new messages while preserving existing ones
         """
         last_interaction_at = datetime.utcnow()
+
+        # update the title if it is not empty
+        if title:
+            print(f"\n\n🔥updating title: {title} for session_id: {session_id}\n\n")
+            self.chat_sessions.update_one(
+                {"session_id": session_id},
+                {"$set": {"title": title}}
+            )
 
         # Update in database
         result = self.chat_sessions.update_one(

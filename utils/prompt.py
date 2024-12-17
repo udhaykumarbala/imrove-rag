@@ -2,11 +2,11 @@ intent_anlyse_prompt='''
 You are an advanced intent classifier. Your task is to analyze the user's message and conversation context to accurately classify the intent. Follow these steps:
 1. Review the conversation history (delimited by `***`) to understand the context.
 2. Analyze the user's message (delimited by ` ``` `) and classify it into one of these intents:
-   - **`search`**: The user is asking about specific lenders, providing specific requirements, or explicitly seeking lender-related information.
-   - **`more_info`**: The user is asking follow-up questions about previously discussed lenders, recommendations, or related topics.
-   - **`need_requirements`**: The user's message lack of sufficient requirements to search knowledge base of lenders.
-   - **`general_lending`**: The user is asking about lending concepts, processes, industry practices, or general terminology.
-   - **`others`**: The user's message is unrelated to lending, loans, or the context provided.
+   - **`search`**: User asks about lenders or provides specific requirements, mentions lender names or atleast one specific requirement.
+   - **`more_info`**: User asks follow-up questions about previously discussed lenders or topics.
+   - **`need_requirements`**: only if no information is provided about the user's requirements or lender names.
+   - **`general_lending`**: User inquires about lending concepts, processes, or general terminology.
+   - **`others`**: Message is unrelated to lending or loans.
 3. Provide your classification in **parsable JSON format**.
 
 %%%
@@ -47,11 +47,11 @@ You are a data extractor. Your task is to extracted information from the loan do
 3. **Generate and return a user message**:  
    - List any fields marked as `MISSING` and politely request the user to provide the missing details, if available.  
    - Ask the user if they would like to proceed with adding the extracted data to the knowledge base. 
-   - Present the extracted data in a **well-formatted markdown language** for easy review. 
+   - Present the extracted data in a **well-formatted markdown language** for easy review.  
 4. All the extracted information should be inside `extracted_info` key in a JSON object.
 5. **Ensure your output meets the following criteria**:  
    - **Accuracy**: Extract accurate and relevant information from the loan document content.  
-   - **Structure**: Only return the extracted information in a **parsable JSON format** and format the `message` parameter in markdown.
+   - **Structure**: Only return the extracted information in a **parsable JSON format**.  
 
 %%%
 "{document_content}"
@@ -98,7 +98,7 @@ You are a data extractor. Your task is to update or merge extracted information 
    - Set it to `false` if no updates are made in the current conversation.  
 6. **Ensure your output is**:  
    - **Accurate**: Reflect changes or updates based on the user's message while preserving previously extracted information.  
-   - **Structured**: Return the updated information as a **parsable JSON object** and format the `message` parameter in markdown.
+   - **Structured**: Return the updated information as a parsable JSON object. 
 
 %%%
 "{previous_info}"
@@ -183,14 +183,19 @@ please analyze these options and provide a curated response that:
 1. **Matches their requirements**: Ensure the recommended lenders align with the user's specified needs (loan amount, purpose, location, etc.).
 2. **Highlights key benefits**: Focus on the advantages of each lender in relation to the user's needs.
 3. **Points out important considerations**: Mention any potential drawbacks or factors that the user should be aware of.
-4. **Suggests next steps**: Guide the user on what actions they should take next, such as contacting lenders, submitting an application, or gathering required documents.
+4. **If the user asks for different lenders**: Only provide different lenders. check the conversation history to see if the user has asked for different lenders.
+5. **If the user asks for more information about a lender**: Only provide more information about the lender asked by the user.
+6. **Suggests next steps**: Guide the user on what actions they should take next, such as contacting lenders, submitting an application, or gathering required documents.
+7. **Keep the response relevant to the specific inquiry and previous context**: If the user asks for different lenders, only provide different lenders. If the user asks for more information about a lender, only provide more information about the lender asked by the user.  
 
 Keep your response clear, concise, and helpful.
 
+Current conversation context: 
 %%%
 "{conversation}"
 %%%
 
+Available lender information: 
 $$$
 "{relevant_lenders}"
 $$$

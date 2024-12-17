@@ -20,7 +20,7 @@ class IntentResponse(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str = Field(description="The response generated for the user based on their input, providing relevant information or assistance.")
-
+    chat_title: str = Field(description="A short title less than 4 words for the conversation")
 class ContactInformation(BaseModel):
     person: str = Field(description="Name of the contact person for the loan-related queries.", default="MISSING")
     address: str = Field(description="Physical address of the company or branch offering the loan services.", default="MISSING")
@@ -56,6 +56,7 @@ class ExtractDocInfoResponse(BaseModel):
     message: str = Field(description="Generated User message")
     consent: bool = Field(default=False)
     is_updated: bool = Field(default=False)
+    chat_title: str = Field(description="A short title less than 4 words for the document")
 
 class XAIHandler(BaseLLM):
     def __init__(self, api_key: str):
@@ -94,7 +95,8 @@ class XAIHandler(BaseLLM):
                 chain = prompt | self.client.with_structured_output(ChatResponse)
                 response = chain.invoke({ "conversation": conversation })
 
-            return response["response"]
+            print(f"🔥response: {response}")
+            return response
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
@@ -112,7 +114,7 @@ class XAIHandler(BaseLLM):
             chain = prompt | self.client.with_structured_output(IntentResponse)
             response = chain.invoke({"conversation_history": recent_messages_str, "user_message": message})
                     
-            return response['intent']
+            return response.intent
 
         except Exception as e:
             self.logger.error(f"Error analyzing intent: {e}")
@@ -186,7 +188,7 @@ class XAIVisionHandler:
             messages=messages,
             temperature=0.01,
         )
-        return ocr_content
+        return ocr_content.choices[0].message.content
 
     def _encode_image(self, image_path: str) -> str:
         with open(image_path, "rb") as image_file:
