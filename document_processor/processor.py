@@ -1,10 +1,15 @@
 import pytesseract
 from pdf2image import convert_from_path
+from pathlib import Path
 from docx import Document
 import pandas as pd
 from typing import Dict, Any
 import tempfile
 import os
+from config import settings
+from llm.xai_handler import XAIVisionHandler
+
+llm = XAIVisionHandler(settings.XAI_API_KEY)
 
 class DocumentProcessor:
     def process_document(self, file_content: bytes, filename: str) -> str:
@@ -32,13 +37,19 @@ class DocumentProcessor:
     
     def _process_pdf(self, file_path: str) -> str:
         pages = convert_from_path(file_path)
-        text = ""
-        for page in pages:
-            text += pytesseract.image_to_string(page)
-        return text
+        extracted_text = ""
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for i, page in enumerate(pages):
+                temp_image_path = Path(temp_dir) / f"page_{i + 1}.png"
+                page.save(temp_image_path, "PNG")
+                extracted_text += llm.ocr(temp_image_path)
+
+        return extracted_text
     
     def _process_image(self, file_path: str) -> str:
-        return pytesseract.image_to_string(file_path)
+        extracted_text = llm.ocr(file_path)
+        return extracted_text
     
     def _process_csv(self, file_path: str) -> str:
         df = pd.read_csv(file_path)
