@@ -220,7 +220,9 @@ async def chat(
         return {
             "response": "I'm sorry, I don't understand that. Please ask me about lending or loan options.",
             "session_id": session_id,
-            "intent": intent
+            "intent": intent,
+            "intent_confidence": intent_response.confidence,
+            "intent_reason": intent_response.reason
         }
 
     elif intent == 'specific_lender' or intent == 'filtered_lender_list':
