@@ -65,6 +65,17 @@ class LoginRequest(BaseModel):
 async def health():
     return {"status": "ok"}
 
+# remove before deployment
+@app.get("/test")
+async def test_fn():
+
+    conversation_str = "list all lenders with min loan amount 2 million and max 4 million, name startwith k "
+    kb_result_str = ""
+
+    response = llm.extract_feature_from_conversation(conversation_str, [])
+
+    return response
+
 @app.post("/upload")
 @timer
 async def upload_document(
@@ -194,33 +205,34 @@ async def chat(
         chat_store.create_session(user_id, session_id, type='chat')
     
     conversation = redis_handler.get_conversation(session_id)
+
     conversation_str = ""
+    kb_result_str = ""
+
     if conversation and len(conversation):
         conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation)
 
     # Analyze intent
-    intent = await llm.analyze_intent(request.message, conversation)
-    print(f"🔥intent: {intent}")
-    kb_result_str = ""
-    
-    if intent == 'others':
+    intent_response = await llm.analyze_intent(request.message, conversation)
+    intent = intent_response.intent
+
+    if intent == 'out_of_scope':
         return {
             "response": "I'm sorry, I don't understand that. Please ask me about lending or loan options.",
             "session_id": session_id,
             "intent": intent
         }
 
-    elif intent == 'search' or intent == 'more_info':
-        kb_results = vector_store.search_documents(request.message) if request.context_type in ["kb", "both"] else []
-        if kb_results:
-            kb_result_str = str(kb_results)
-        
-        print(f"🔥kb_result_str: {kb_result_str}")
-    
+    elif intent == 'specific_lender' or intent == 'filtered_lender_list':
+        # To Do: Call extract_feature_from_conversation function to get relevant lender "kb_result"
+        # convert the array into string format (refer other parts of the code) and update the kb_result_str
+        pass
+
     response = await llm.generate_response(intent, conversation_str, kb_result_str)
 
     # only new conversarion
     newConversation = [ {"role": "user", "content": request.message}, {"role": "assistant", "content": response.response}]
+
     # Update conversation history
     conversation.extend(newConversation)
     
@@ -230,7 +242,9 @@ async def chat(
     return {
         "response": response.response,
         "session_id": session_id,
-        "intent": intent
+        "intent": intent,
+        "intent_confidence": intent_response.confidence,
+        "intent_reason": intent_response.reason
     }
 
 @app.get("/sessions")
@@ -346,5 +360,5 @@ async def update_user(
 if __name__ == "__main__":
     import uvicorn
     # add cors
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000) # change host to 0.0.0.0 before deployment
 
