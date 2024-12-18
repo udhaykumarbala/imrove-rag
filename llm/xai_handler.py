@@ -17,10 +17,13 @@ logger = logging.getLogger(__name__)
 
 class IntentResponse(BaseModel):
     intent: str = Field(description="Identified intent of the user's message.")
+    confidence: str = Field(description="Confidence of the indentified intent based on user message (High/Medium/Low)")
+    reason: str = Field(description="Brief explanation for the classification based on the user message and conversation history.")
 
 class ChatResponse(BaseModel):
     response: str = Field(description="The response generated for the user based on their input, providing relevant information or assistance.")
     chat_title: str = Field(description="A short title less than 4 words for the conversation")
+    
 class ContactInformation(BaseModel):
     person: str = Field(description="Name of the contact person for the loan-related queries.", default="MISSING")
     address: str = Field(description="Physical address of the company or branch offering the loan services.", default="MISSING")
@@ -58,6 +61,14 @@ class ExtractDocInfoResponse(BaseModel):
     is_updated: bool = Field(default=False)
     chat_title: str = Field(description="A short title less than 4 words for the document")
 
+class FilterInformation(BaseModel):
+    field: str = Field(description="Field to filter (e.g., name, service_area) mentioned in user message")
+    operator: str = Field(description="Operator (e.g., '=', 'contains', 'startswith', 'textsearch').")
+    value:  str = Field(description="Value or pattern for the filter.")
+
+class ExtractFeatureResponse(BaseModel):
+    filters: List[FilterInformation] = Field(description="List of all responsible filters extracted from user's message")
+
 class XAIHandler(BaseLLM):
     def __init__(self, api_key: str):
         self.client = ChatOpenAI(
@@ -73,16 +84,11 @@ class XAIHandler(BaseLLM):
 
     async def generate_response(self, intent: str, conversation: str, kb_result: str) -> str:
         try:
-            prompt = ChatPromptTemplate.from_messages([("system", general_help_prompt)])
+            prompt = ChatPromptTemplate.from_messages([("system", general_leading_prompt)])
             response = { "response": "" }
 
-            if intent == "general_lending":
-                prompt = ChatPromptTemplate.from_messages([("system", intent_anlyse_prompt)])
-                chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
-
-            elif intent == "search" or "more_info":
-                prompt = ChatPromptTemplate.from_messages([("system", search_prompt)])
+            if intent == 'specific_lender' or intent == 'filtered_lender_list':
+                prompt = ChatPromptTemplate.from_messages([("system", specified_lender_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
                 response = chain.invoke({ "conversation": conversation, "relevant_lenders": kb_result })
 
@@ -91,18 +97,22 @@ class XAIHandler(BaseLLM):
                 chain = prompt | self.client.with_structured_output(ChatResponse)
                 response = chain.invoke({ "conversation": conversation })
 
+            elif intent == "follow_up_lender":
+                prompt = ChatPromptTemplate.from_messages([("system", follow_up_lender_prompt)])
+                chain = prompt | self.client.with_structured_output(ChatResponse)
+                response = chain.invoke({ "conversation": conversation })
+
             else: 
                 chain = prompt | self.client.with_structured_output(ChatResponse)
                 response = chain.invoke({ "conversation": conversation })
 
-            print(f"🔥response: {response}")
             return response
 
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             raise
     
-    async def analyze_intent(self, message: str, conversation: list) -> str:
+    async def analyze_intent(self, message: str, conversation: list):
         try:
             recent_messages = conversation[-4:] if conversation else []
             recent_messages_str = ""
@@ -114,7 +124,7 @@ class XAIHandler(BaseLLM):
             chain = prompt | self.client.with_structured_output(IntentResponse)
             response = chain.invoke({"conversation_history": recent_messages_str, "user_message": message})
                     
-            return response.intent
+            return response
 
         except Exception as e:
             self.logger.error(f"Error analyzing intent: {e}")
@@ -154,6 +164,59 @@ class XAIHandler(BaseLLM):
             self.logger.error(f"Error extracting information from conversation: {e}")
             return previous_info
 
+    def extract_feature_from_conversation(self,  message: str, conversation: list):
+        try:
+            recent_messages = conversation[-4:] if conversation else []
+            recent_messages_str = ""
+
+            if conversation and len(conversation):
+                recent_messages_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in recent_messages)
+
+            prompt = ChatPromptTemplate.from_messages([("system", extract_feature_from_conversation_prompt)])
+            chain = prompt | self.client.with_structured_output(ExtractFeatureResponse)
+            response = chain.invoke({"conversation_history": recent_messages_str, "user_message": message})
+            response = response.model_dump()
+
+            query = self._construct_mongo_query(response['filters'])
+
+            ## To Do --> Use this query parameter to fetch relevant lenders from mongo datbase. 
+            ## Return the relevant lenders in array format. If not lender found return empty array.
+
+            return {}
+
+        except Exception as e:
+            self.logger.error(f"Error extracting features from conversation: {e}")
+            return "other"
+
+    def _construct_mongo_query(self, filters):
+        query = {}
+        for condition in filters:
+            field = condition["field"]
+            operator = condition["operator"]
+            value = condition["value"]
+
+            if operator == "=":
+                query[field] = value
+            elif operator == "contains":
+                query[field] = {"$regex": value, "$options": "i"}  # Case-insensitive match
+            elif operator == "startswith":
+                query[field] = {"$regex": f"^{value}", "$options": "i"}  # Prefix match
+            elif operator == "textsearch":
+                query["$text"] = {"$search": value}  # Full-text search
+                
+            elif operator == ">":
+                query[field] = {"$gt": float(value)}
+            elif operator == "<":
+                query[field] = {"$lt": float(value)}
+            elif operator == ">=":
+                query[field] = {"$gte": float(value)}
+            elif operator == "<=":
+                query[field] = {"$lte": float(value)}
+            elif operator == "between":
+                min_val, max_val = map(float, value.split(","))
+                query[field] = {"$gte": min_val, "$lte": max_val}
+
+        return query
 
 class XAIVisionHandler:
     def __init__(self, api_key: str):
