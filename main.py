@@ -1,10 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, Header, HTTPException, Form, Request
 from typing import Optional
 import uuid
 from pydantic import BaseModel
 from time import perf_counter
 import logging
-
 from config import settings
 from llm.xai_handler import XAIHandler
 from document_processor.processor import DocumentProcessor
@@ -75,8 +74,7 @@ async def upload_document(
     user_id = jwt.decode_token(authorization)["sub"]
     if not session_id:
         session_id = str(uuid.uuid4())
-        
-    
+
     content = await file.read()
     text = doc_processor.process_document(content, file.filename)
     
@@ -311,13 +309,10 @@ async def verify_otp(
     email: str = Form(...),
     otp: str = Form(...)
 ):
-   
-        
-    
+
     if not redis_handler.verify_otp(email, otp) and email != "test@test.com":
         return {"message": "Invalid OTP"}
-    
-    
+
     user = None
     if not user_store.get_user_by_email(email):
         user = user_store.create_user(email)
@@ -325,7 +320,7 @@ async def verify_otp(
         user = user_store.get_user_by_email(email)
     
     token = jwt.create_token(user.id)
-        
+
     if user.name:
         return {"message": "User created successfully", "is_first_login": False, "token": token, "name": user.name}
     else:
@@ -342,9 +337,66 @@ async def update_user(
     user_store.update_user(user)
     return {"message": "User updated successfully", "user": user}
 
+import re
 
-if __name__ == "__main__":
-    import uvicorn
-    # add cors
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+def clean_text_data(text: str) -> str:
+    if not text:
+        return ""
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Remove URLs
+    text = re.sub(r"https?://\S+|www\.\S+", "", text)
+    # Replace excessive spaces/newlines with a single space
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
+# Function to recursively clean and remove 'html' keys from payload
+def clean_payload(payload):
+    if isinstance(payload, dict):
+        clean_data = {}
+        for key, value in payload.items():
+            # Skip 'html' keys
+            if key == "html":
+                continue
+            clean_data[key] = clean_payload(value)
+        return clean_data
+    elif isinstance(payload, list):
+        return [clean_payload(item) for item in payload]
+    elif isinstance(payload, str):
+        return clean_text_data(payload)
+    elif isinstance(payload, dict) and 'text' in payload:
+        # Handle cases where text has 'plain' or 'html' format
+        text = payload['text']
+        if isinstance(text, dict) and 'plain' in text:
+            # Clean the plain text body if present
+            text['plain'] = clean_text_data(text['plain'])
+        elif isinstance(text, str):
+            # Clean the string text directly
+            text = clean_text_data(text)
+        return text
+    else:
+        return payload
+@app.post("/fetch_webhook")
+async def fetch_webhook(request: Request):
+    try:
+        # Parse JSON payload from request
+        payload = await request.json()
+
+        # Clean payload recursively and remove 'html' keys
+        cleaned_payload = clean_payload(payload)
+
+        # Display only the cleaned payload in the terminal
+        print("✅ Cleaned Payload:")
+        print(cleaned_payload)
+
+        document_info = llm.extract_document_info(cleaned_payload)
+        # document_info = document_info.extracted_info
+        extracted_info = document_info.extracted_info
+        print(f"🔥document_info: {extracted_info}")
+
+        # Return a success response without logging details
+        return {"status": "success", "message": "Webhook processed successfully"}
+
+    except Exception as e:
+        logger.error(f"❌ Error processing webhook: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process webhook")
