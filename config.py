@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     MONGODB_URL: str
     MONGO_DATABASE: str
     JWT_SECRET_KEY: str
-    MAILERSEND_API_KEY:str
+    MAILERSEND_API_KEY: str
     # JWT_EXPIRY_DAYS: int = 30
     # SENDGRID_API_KEY: str
     # SENDGRID_FROM_EMAIL: str
