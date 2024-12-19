@@ -400,3 +400,8 @@ async def fetch_webhook(request: Request):
     except Exception as e:
         logger.error(f"❌ Error processing webhook: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to process webhook")
+
+if __name__ == "__main__":
+    import uvicorn
+    # add cors
+    uvicorn.run(app, host="0.0.0.0", port=8000)
