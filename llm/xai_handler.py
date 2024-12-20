@@ -36,9 +36,9 @@ class DataFromDoc(BaseModel):
     loan_plans: str = Field(description="Details of the loan plans offered.", default="MISSING")
     service_area: str = Field(description="Geographical regions where the company provides its loan services.", default="MISSING")
     credit_score_requirements: str = Field(description="Minimum credit score required to qualify for the loan.", default="MISSING")
-    loan_minimum_amount: str = Field(description="The minimum loan amount that can be availed.", default="MISSING")
-    loan_maximum_amount: str = Field(description="The maximum loan amount that can be availed.", default="MISSING")
-    loan_to_value_ratio: str = Field(description="Loan-to-Value (LTV) ratio, typically expressed as a percentage.", default="MISSING")
+    loan_minimum_amount: float = Field(description="The minimum loan amount that can be availed. Convert it into float value", default=0)
+    loan_maximum_amount: float = Field(description="The maximum loan amount that can be availed. Convert it into float value", default=0)
+    loan_to_value_ratio: float = Field(description="Loan-to-Value (LTV) ratio, typically expressed as a percentage. Convert it into float value", default=0)
     application_requirements: str = Field(description="List of documents or criteria required to apply for the loan.", default="MISSING")
     guidelines: str = Field(description="Guidelines and instructions related to the loan application process.", default="MISSING")
     contact_information: ContactInformation = Field(description="Details for contacting the company, including name, phone, address and email.", default="MISSING")
@@ -46,8 +46,8 @@ class DataFromDoc(BaseModel):
     interest_rates: str = Field(description="Details about the interest rates applicable to the loan.", default="MISSING")
     points_charged: str = Field(description="Points or fees charged on the loan, often expressed as a percentage of the loan amount.", default="MISSING")
     liquidity_requirements: str = Field(description="Minimum liquidity required by the borrower to qualify for the loan.", default="MISSING")
-    loan_to_cost_ratio: str = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage.", default="MISSING")
-    debt_service_coverage_ration: str = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.", default="MISSING")
+    loan_to_cost_ratio: float = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage. Convert it into float value", default=0)
+    debt_service_coverage_ration: float = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations. Convert it into float value", default=0)
     loan_term: str = Field(description="Duration of the loan, usually expressed in months or years.", default="MISSING")
     amortization: str = Field(description="Details of the amortization schedule, specifying how the loan will be repaid.", default="MISSING")
     construction: str = Field(description="Indicates whether the loan is applicable for construction projects (yes/no).", default="MISSING")
@@ -135,7 +135,7 @@ class XAIHandler(BaseLLM):
             prompt = ChatPromptTemplate.from_messages([("system", extract_document_info_prompt)])
             chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
             response = chain.invoke({"document_content": text})
-
+            print("response", response)
             return response
 
         except Exception as e:
@@ -182,7 +182,7 @@ class XAIHandler(BaseLLM):
             ## To Do --> Use this query parameter to fetch relevant lenders from mongo datbase. 
             ## Return the relevant lenders in array format. If not lender found return empty array.
 
-            return {}
+            return query
 
         except Exception as e:
             self.logger.error(f"Error extracting features from conversation: {e}")

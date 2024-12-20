@@ -4,163 +4,149 @@ from pymongo import MongoClient
 from bson import ObjectId
 from config import settings
 
-## Document create, delete
-## Updating existing document based on document id
-## Search Document based on query parameter
-
-
-class Document:
-    def __init__(self, email: str, name: Optional[str] = None, user_id: Optional[str] = None, created: Optional[datetime] = None):
-        self.id = user_id or str(ObjectId()) ## required
-        self.email = email
-        self.name = name
-        self.created = created or datetime.utcnow() ## required
+class LoanDocument:
+    def __init__(
+        self,
+        document_id: str = "MISSING",
+        company_name: str = "MISSING",
+        loan_plans: str = "MISSING",
+        service_area: str = "MISSING",
+        credit_score_requirements: str = "MISSING",
+        loan_minimum_amount: float = 0,
+        loan_maximum_amount: float = 0,
+        loan_to_value_ratio: float = 0,
+        application_requirements: str = "MISSING",
+        guidelines: str = "MISSING",
+        contact_information: Optional[dict] = None,
+        property_types: str = "MISSING",
+        interest_rates: str = "MISSING",
+        points_charged: str = "MISSING",
+        liquidity_requirements: str = "MISSING",
+        loan_to_cost_ratio: any = 0,
+        debt_service_coverage_ration: float = 0,
+        loan_term: str = "MISSING",
+        amortization: str = "MISSING",
+        construction: str = "MISSING",
+        value_add: str = "MISSING",
+        personal_guarantee: str = "MISSING",
+        created_at: datetime = datetime.utcnow(),
+        updated_at: datetime = datetime.utcnow(),
+        created_by: str = "MISSING"
+    ):
+        self.id = str(ObjectId())
+        self.document_id = document_id
+        self.company_name = company_name
+        self.loan_plans = loan_plans
+        self.service_area = service_area
+        self.credit_score_requirements = credit_score_requirements
+        self.loan_minimum_amount = loan_minimum_amount
+        self.loan_maximum_amount = loan_maximum_amount
+        self.loan_to_value_ratio = loan_to_value_ratio
+        self.application_requirements = application_requirements
+        self.guidelines = guidelines
+        self.contact_information = contact_information or {"person": "MISSING", "phone": "MISSING", "email": "MISSING"}
+        self.property_types = property_types
+        self.interest_rates = interest_rates
+        self.points_charged = points_charged
+        self.liquidity_requirements = liquidity_requirements
+        self.loan_to_cost_ratio = loan_to_cost_ratio
+        self.debt_service_coverage_ration = debt_service_coverage_ration
+        self.loan_term = loan_term
+        self.amortization = amortization
+        self.construction = construction
+        self.value_add = value_add
+        self.personal_guarantee = personal_guarantee
+        self.created_at = datetime.utcnow()
+        self.updated_at = updated_at
+        self.created_by = created_by
 
     def to_dict(self):
-        data = {
+        return {
             "_id": ObjectId(self.id),
-            "email": self.email,
-            "created": self.created
+            "document_id": self.document_id,
+            "company_name": self.company_name,
+            "loan_plans": self.loan_plans,
+            "service_area": self.service_area,
+            "credit_score_requirements": self.credit_score_requirements,
+            "loan_minimum_amount": self.loan_minimum_amount,
+            "loan_maximum_amount": self.loan_maximum_amount,
+            "loan_to_value_ratio": self.loan_to_value_ratio,
+            "application_requirements": self.application_requirements,
+            "guidelines": self.guidelines,
+            "contact_information": self.contact_information,
+            "property_types": self.property_types,
+            "interest_rates": self.interest_rates,
+            "points_charged": self.points_charged,
+            "liquidity_requirements": self.liquidity_requirements,
+            "loan_to_cost_ratio": self.loan_to_cost_ratio,
+            "debt_service_coverage_ration": self.debt_service_coverage_ration,
+            "loan_term": self.loan_term,
+            "amortization": self.amortization,
+            "construction": self.construction,
+            "value_add": self.value_add,
+            "personal_guarantee": self.personal_guarantee,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "created_by": self.created_by,
         }
-        if self.name:
-            data["name"] = self.name
-        return data
 
     @classmethod
-    def from_dict(cls, data: dict) -> "User":
+    def from_dict(cls, data: dict) -> "LoanDocument":
         return cls(
-            email=data["email"],
-            name=data.get("name"),
-            user_id=str(data["_id"]),
-            created=data["created"]
+            document_id=data.get("document_id", "MISSING"),
+            company_name=data.get("company_name", "MISSING"),
+            loan_plans=data.get("loan_plans", "MISSING"),
+            service_area=data.get("service_area", "MISSING"),
+            credit_score_requirements=data.get("credit_score_requirements", "MISSING"),
+            loan_minimum_amount=data.get("loan_minimum_amount", 0),
+            loan_maximum_amount=data.get("loan_maximum_amount", 0),
+            loan_to_value_ratio=data.get("loan_to_value_ratio", 0),
+            application_requirements=data.get("application_requirements", "MISSING"),
+            guidelines=data.get("guidelines", "MISSING"),
+            contact_information=data.get("contact_information", {"Person": "MISSING", "Phone": "MISSING", "Email": "MISSING"}),
+            property_types=data.get("property_types", "MISSING"),
+            interest_rates=data.get("interest_rates", "MISSING"),
+            points_charged=data.get("points_charged", "MISSING"),
+            liquidity_requirements=data.get("liquidity_requirements", "MISSING"),
+            loan_to_cost_ratio=data.get("loan_to_cost_ratio", 0),
+            debt_service_coverage_ration=data.get("debt_service_coverage_ration", 0),
+            loan_term=data.get("loan_term", "MISSING"),
+            amortization=data.get("amortization", "MISSING"),
+            construction=data.get("construction", "MISSING"),
+            value_add=data.get("value_add", "MISSING"),
+            personal_guarantee=data.get("personal_guarantee", "MISSING"),
+            created_at=data["created_at"],
+            updated_at=data["updated_at"],
+            created_by=data.get("created_by", "MISSING"),
         )
-
-class DocumentStore:
-    def __init__(self):
-        self.client = MongoClient(settings.MONGODB_URL)
-        self.db = self.client[settings.MONGO_DATABASE]
-        self.users = self.db.users
-
-    def create_user(self, email: str) -> User:
-        # Check if user already exists
-        if self.get_user_by_email(email):
-            raise ValueError("User with this email already exists")
-        
-        user = User(email=email)
-        self.users.insert_one(user.to_dict())
-        return user
-
-    def get_user_by_id(self, user_id: str) -> Optional[User]:
-        user_data = self.users.find_one({"_id": ObjectId(user_id)})
-        return User.from_dict(user_data) if user_data else None
-
-    def get_user_by_email(self, email: str) -> Optional[User]:
-        user_data = self.users.find_one({"email": email})
-        return User.from_dict(user_data) if user_data else None
-
-    def update_user(self, user: User) -> bool:
-        result = self.users.update_one(
-            {"_id": ObjectId(user.id)},
-            {"$set": {"name": user.name, "email": user.email}}
-        )
-        return result.modified_count > 0
-
-    def delete_user(self, user_id: str) -> bool:
-        result = self.users.delete_one({"_id": ObjectId(user_id)})
-        return result.deleted_count > 0
-
-    def update_user_name(self, user_id: str, name: str) -> bool:
-        if not name or not name.strip():
-            raise ValueError("Name cannot be empty")
-
-        result = self.users.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"name": name.strip()}}
-        )
-        return result.modified_count > 0
-
-    def is_user_profile_complete(self, user_id: str) -> bool:
-        user_data = self.users.find_one({"_id": ObjectId(user_id)})
-        if not user_data:
-            return False
-        return bool(user_data.get("name"))
-
-
-
-from datetime import datetime
-from typing import Optional
-from pymongo import MongoClient
-from bson import ObjectId
-from pydantic import BaseModel, Field
-
-# Replace with your actual MongoDB settings
-MONGODB_URL = "your_mongodb_url"
-MONGO_DATABASE = "your_database_name"
-
-class ContactInformation(BaseModel):
-    name: str = Field(description="Contact person's name", default="MISSING")
-    phone: str = Field(description="Contact phone number", default="MISSING")
-    address: str = Field(description="Contact address", default="MISSING")
-    email: str = Field(description="Contact email address", default="MISSING")
-
-class LoanDocument(BaseModel):
-    id: Optional[str] = Field(default_factory=lambda: str(ObjectId()), description="Unique document ID")
-    company_name: str = Field(description="Name of the company providing the loan services.", default="MISSING")
-    loan_plans: str = Field(description="Details of the loan plans offered.", default="MISSING")
-    service_area: str = Field(description="Geographical regions where the company provides its loan services.", default="MISSING")
-    credit_score_requirements: str = Field(description="Minimum credit score required to qualify for the loan.", default="MISSING")
-    loan_minimum_amount: str = Field(description="The minimum loan amount that can be availed.", default="MISSING")
-    loan_maximum_amount: str = Field(description="The maximum loan amount that can be availed.", default="MISSING")
-    loan_to_value_ratio: str = Field(description="Loan-to-Value (LTV) ratio, typically expressed as a percentage.", default="MISSING")
-    application_requirements: str = Field(description="List of documents or criteria required to apply for the loan.", default="MISSING")
-    guidelines: str = Field(description="Guidelines and instructions related to the loan application process.", default="MISSING")
-    contact_information: ContactInformation = Field(description="Details for contacting the company, including name, phone, address, and email.")
-    property_types: str = Field(description="Types of properties eligible for loans, such as residential, commercial, etc.", default="MISSING")
-    interest_rates: str = Field(description="Details about the interest rates applicable to the loan.", default="MISSING")
-    points_charged: str = Field(description="Points or fees charged on the loan, often expressed as a percentage of the loan amount.", default="MISSING")
-    liquidity_requirements: str = Field(description="Minimum liquidity required by the borrower to qualify for the loan.", default="MISSING")
-    loan_to_cost_ratio: str = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage.", default="MISSING")
-    debt_service_coverage_ratio: str = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.", default="MISSING")
-    loan_term: str = Field(description="Duration of the loan, usually expressed in months or years.", default="MISSING")
-    amortization: str = Field(description="Details of the amortization schedule, specifying how the loan will be repaid.", default="MISSING")
-    construction: str = Field(description="Indicates whether the loan is applicable for construction projects (yes/no).", default="MISSING")
-    value_add: str = Field(description="Indicates whether the loan is applicable for value-add projects (yes/no).", default="MISSING")
-    personal_guarantee: str = Field(description="Specifies if a personal guarantee is required for the loan (yes/no/partial).", default="MISSING")
-    created: datetime = Field(default_factory=datetime.utcnow, description="Document creation timestamp.")
-
-    def to_dict(self):
-        return self.dict(by_alias=True, exclude_none=True, exclude_unset=True)
 
 class LoanDocumentStore:
     def __init__(self):
-        self.client = MongoClient(MONGODB_URL)
-        self.db = self.client[MONGO_DATABASE]
+        self.client = MongoClient(settings.MONGODB_URL)
+        self.db = self.client[settings.MONGO_DATABASE]
         self.collection = self.db.loan_documents
 
-    def create_document(self, document: LoanDocument) -> LoanDocument:
-        self.collection.insert_one(document.to_dict())
+    def store_document(self, document: LoanDocument) -> LoanDocument:
+        loan_document = document.to_dict()
+        self.collection.insert_one(loan_document)
         return document
 
     def get_document_by_id(self, document_id: str) -> Optional[LoanDocument]:
-        data = self.collection.find_one({"_id": ObjectId(document_id)})
-        return LoanDocument(**data) if data else None
+        data = self.collection.find_one({"document_id": document_id})
+        return LoanDocument.from_dict(data) if data else None
 
     def update_document(self, document_id: str, updates: dict) -> bool:
         result = self.collection.update_one(
-            {"_id": ObjectId(document_id)},
+            {"document_id": document_id},
             {"$set": updates}
         )
         return result.modified_count > 0
 
     def delete_document(self, document_id: str) -> bool:
-        result = self.collection.delete_one({"_id": ObjectId(document_id)})
+        result = self.collection.delete_one({"document_id": document_id})
         return result.deleted_count > 0
 
     def search_documents(self, query: dict) -> list[LoanDocument]:
+        print("query is", query)
         documents = self.collection.find(query)
-        return [LoanDocument(**doc) for doc in documents]
-
-# Example Usage:
-# store = LoanDocumentStore()
-# new_doc = LoanDocument(company_name="ABC Loans", contact_information=ContactInformation(name="John Doe", phone="1234567890", address="123 Main St", email="john@abc.com"))
-# store.create_document(new_doc)
+        return [doc for doc in list(documents)]
