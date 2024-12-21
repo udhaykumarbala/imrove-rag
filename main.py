@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from utils.timing import timer
 from database.user_store import UserStore
 from database.chat_store import ChatStore
+from database.document_store import LoanDocumentStore, LoanDocument
 from auth.jwt import JWT
 from mailersend import emails
 
@@ -45,6 +46,7 @@ redis_handler = RedisHandler(
 
 user_store = UserStore()
 chat_store = ChatStore()
+loan_store = LoanDocumentStore()
 
 jwt = JWT(settings.JWT_SECRET_KEY, "HS256")
 
@@ -76,17 +78,28 @@ async def upload_document(
     if not session_id:
         session_id = str(uuid.uuid4())
         
-    
     content = await file.read()
     text = doc_processor.process_document(content, file.filename)
     
     # Extract information using LLM
     document_info = llm.extract_document_info(text)
-    # document_info = document_info.extracted_info
+
+    print(f"🔥document_info: {document_info}")
+
     extracted_info = document_info.extracted_info
-    print (f"🔥document_info: {extracted_info}")
     document_id = str(uuid.uuid4())
+
+
+    loan_document = extracted_info.model_dump()
+    loan_document["document_id"] = document_id
+    loan_document["created_by"] = "user"
+
+    # loan_document = LoanDocument(**loan_document)
+    # loan_store.store_document(loan_document)
+
     if document_info.consent:
+        loan_document = LoanDocument(**loan_document)
+        loan_store.store_document(loan_document)
         vector_store.store_document(extracted_info.model_dump(), document_id)
 
     redis_handler.save_previous_info(session_id, extracted_info.model_dump())
@@ -101,7 +114,6 @@ async def upload_document(
     chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
     chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
 
-    
     response = {
         "session_id": session_id,
         "document_id": document_id,
@@ -151,6 +163,18 @@ async def upload_chat(request: ChatRequest, session_id: str = Header(...)):
                 logger.info(f"⏱️ Vector store operation took {perf_counter() - start:.2f} seconds")
             except Exception as e:
                 logger.error(f"Error handling vector store: {e}")
+            
+            try: 
+                response_data =  response.model_dump()
+                if not loan_store.get_document_by_id(document_id):
+                    loan_document = LoanDocument(response_data['extracted_info'])
+                    loan_store.store_document(loan_document)
+                else:
+                    loan_document = LoanDocument(response_data['extracted_info'])
+                    loan_store.update_document(document_id, loan_document)
+                logger.info(f"⏱️ Loan document store operation took {perf_counter() - start:.2f} seconds")
+            except Exception as e:
+                logger.error(f"Error handling loan store: {e}")
         
         # Time conversation update
         start = perf_counter()
@@ -194,33 +218,37 @@ async def chat(
         chat_store.create_session(user_id, session_id, type='chat')
     
     conversation = redis_handler.get_conversation(session_id)
+
     conversation_str = ""
+    kb_result_str = ""
+
     if conversation and len(conversation):
         conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation)
 
     # Analyze intent
-    intent = await llm.analyze_intent(request.message, conversation)
-    print(f"🔥intent: {intent}")
-    kb_result_str = ""
-    
-    if intent == 'others':
+    intent_response = await llm.analyze_intent(request.message, conversation)
+    intent = intent_response.intent
+
+    print('intent:', intent)
+
+    if intent == 'out_of_scope':
         return {
             "response": "I'm sorry, I don't understand that. Please ask me about lending or loan options.",
             "session_id": session_id,
-            "intent": intent
+            "intent": intent,
+            "intent_confidence": intent_response.confidence,
+            "intent_reason": intent_response.reason
         }
 
-    elif intent == 'search' or intent == 'more_info':
-        kb_results = vector_store.search_documents(request.message) if request.context_type in ["kb", "both"] else []
-        if kb_results:
-            kb_result_str = str(kb_results)
-        
-        print(f"🔥kb_result_str: {kb_result_str}")
-    
+    elif intent == 'specific_lender' or intent == 'filtered_lender_list':
+        query = llm.extract_feature_from_conversation(request.message, conversation)  
+        kb_result_str = loan_store.search_documents(query)
+
     response = await llm.generate_response(intent, conversation_str, kb_result_str)
 
     # only new conversarion
     newConversation = [ {"role": "user", "content": request.message}, {"role": "assistant", "content": response.response}]
+
     # Update conversation history
     conversation.extend(newConversation)
     
@@ -230,7 +258,9 @@ async def chat(
     return {
         "response": response.response,
         "session_id": session_id,
-        "intent": intent
+        "intent": intent,
+        "intent_confidence": intent_response.confidence,
+        "intent_reason": intent_response.reason
     }
 
 @app.get("/sessions")
@@ -346,5 +376,5 @@ async def update_user(
 if __name__ == "__main__":
     import uvicorn
     # add cors
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000) # change host to 0.0.0.0 before deployment
 
