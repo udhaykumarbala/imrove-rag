@@ -5,16 +5,17 @@ from bson import ObjectId
 from config import settings  # Import the config module
 
 class ChatMessage:
-    def __init__(self, role: str, content: str, feedback: Optional[str] = None):
+    def __init__(self, role: str, content: str, feedback: Optional[str] = None, rating: Optional[int] = None):
         self.role = role
         self.content = content
         self.feedback = feedback
-
+        self.rating = rating
     def to_dict(self):
         return {
             "role": self.role,
             "content": self.content,
-            "feedback": self.feedback
+            "feedback": self.feedback,
+            "rating": self.rating
         }
 
     @classmethod
@@ -22,7 +23,8 @@ class ChatMessage:
         return cls(
             role=data["role"],
             content=data["content"],
-            feedback=data.get("feedback", None)
+            feedback=data.get("feedback", None),
+            rating=data.get("rating", None)
         )
 
 class ChatSession:
@@ -169,7 +171,7 @@ class ChatStore:
         
         return sessions
 
-    def update_message_feedback(self, user_id: str, session_id: str, message_index: int, feedback: str) -> bool:
+    def update_message_feedback(self, user_id: str, session_id: str, message_index: int, feedback: str, rating: int) -> bool:
         """
         Update feedback string for a specific feedback in a message with index
         """
@@ -180,7 +182,8 @@ class ChatStore:
             },
             {
                 "$set": {
-                    f"messages.{message_index}.feedback": feedback
+                    f"messages.{message_index}.feedback": feedback,
+                    f"messages.{message_index}.rating": rating
                 }
             }
         )
