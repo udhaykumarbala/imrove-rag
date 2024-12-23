@@ -376,11 +376,16 @@ def clean_payload(payload):
         return text
     else:
         return payload
+
 @app.post("/fetch_webhook")
-async def fetch_webhook(request: Request):
+async def fetch_webhook(request: Request,session_id: Optional[str] = Header(None)):
     try:
+        if not session_id:
+            session_id = str(uuid.uuid4())
         # Parse JSON payload from request
         payload = await request.json()
+        user_id = payload.get('account')
+        print(user_id)
 
         # Clean payload recursively and remove 'html' keys
         cleaned_payload = clean_payload(payload)
@@ -388,14 +393,37 @@ async def fetch_webhook(request: Request):
         # Display only the cleaned payload in the terminal
         print("✅ Cleaned Payload:")
         print(cleaned_payload)
-
         document_info = llm.extract_document_info(cleaned_payload)
         # document_info = document_info.extracted_info
         extracted_info = document_info.extracted_info
         print(f"🔥document_info: {extracted_info}")
+        document_id = str(uuid.uuid4())
+        if document_info.consent:
+            vector_store.store_document(extracted_info.model_dump(), document_id)
 
-        # Return a success response without logging details
-        return {"status": "success", "message": "Webhook processed successfully"}
+        redis_handler.save_previous_info(session_id, extracted_info.model_dump())
+        redis_handler.save_document_id(session_id, document_id)
+
+        conversation = [
+            {"role": "user", "content": "Uploaded document"},
+            {"role": "assistant", "content": document_info.message}
+        ]
+        redis_handler.save_conversation(session_id, conversation)
+
+        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
+                                  document_info=extracted_info.model_dump())
+        chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
+
+        response = {
+            "session_id": session_id,
+            "document_id": document_id,
+            "extracted_info": extracted_info.model_dump(),
+            "message": document_info.message,
+            "consent": document_info.consent,
+            "is_updated": document_info.is_updated
+        }
+        print(f"🔥response: {response}")
+        return response
 
     except Exception as e:
         logger.error(f"❌ Error processing webhook: {str(e)}")

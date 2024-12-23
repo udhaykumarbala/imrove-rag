@@ -214,7 +214,3 @@ You are an advanced vision model specialized in optical character recognition (O
 
 Focus on capturing all available information from the image regardless of text orientation, style, or segmentation.
 '''
-
-content_checker = '''You are an expert financial analyst specializing in lending and finance. Your task is to carefully analyze the provided content and determine whether it pertains to lending finance. This includes:
-1. Borrower Details: Information about individuals or entities seeking loans, such as personal details, loan amounts, purposes, or repayment details.
-2. Lender Details: Information about financial institutions, lenders, or terms and conditions of lending.'''
