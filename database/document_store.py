@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pymongo import MongoClient
 from bson import ObjectId
 from config import settings
@@ -56,7 +56,7 @@ class LoanDocument:
         self.construction = construction
         self.value_add = value_add
         self.personal_guarantee = personal_guarantee
-        self.created_at = datetime.utcnow()
+        self.created_at = created_at
         self.updated_at = updated_at
         self.created_by = created_by
 
@@ -85,8 +85,8 @@ class LoanDocument:
             "construction": self.construction,
             "value_add": self.value_add,
             "personal_guarantee": self.personal_guarantee,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.timestamp(),
+            "updated_at": self.updated_at.timestamp(),
             "created_by": self.created_by,
         }
 
@@ -103,7 +103,7 @@ class LoanDocument:
             loan_to_value_ratio=data.get("loan_to_value_ratio", 0),
             application_requirements=data.get("application_requirements", "MISSING"),
             guidelines=data.get("guidelines", "MISSING"),
-            contact_information=data.get("contact_information", {"Person": "MISSING", "Phone": "MISSING", "Email": "MISSING"}),
+            contact_information=data.get("contact_information", {"person": "MISSING", "phone": "MISSING", "email": "MISSING"}),
             property_types=data.get("property_types", "MISSING"),
             interest_rates=data.get("interest_rates", "MISSING"),
             points_charged=data.get("points_charged", "MISSING"),
@@ -115,8 +115,8 @@ class LoanDocument:
             construction=data.get("construction", "MISSING"),
             value_add=data.get("value_add", "MISSING"),
             personal_guarantee=data.get("personal_guarantee", "MISSING"),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=datetime.fromtimestamp(data["created_at"]),
+            updated_at=datetime.fromtimestamp(data["updated_at"]),
             created_by=data.get("created_by", "MISSING"),
         )
 
@@ -136,6 +136,8 @@ class LoanDocumentStore:
         return LoanDocument.from_dict(data) if data else None
 
     def update_document(self, document_id: str, updates: dict) -> bool:
+        if "document_id" in updates:
+            del updates["document_id"]  # Ensure document_id is not overwritten
         result = self.collection.update_one(
             {"document_id": document_id},
             {"$set": updates}
@@ -145,12 +147,12 @@ class LoanDocumentStore:
     def delete_document(self, document_id: str) -> bool:
         result = self.collection.delete_one({"document_id": document_id})
         return result.deleted_count > 0
-
+        
     def search_documents(self, query: dict) -> list[LoanDocument]:
         documents = self.collection.find(query)
         return [doc for doc in list(documents)]
 
-    def find_similar_documents(self, document: LoanDocument, similarity_threshold: float = 0.8) -> List[LoanDocument]:
+    def find_similar_documents(self, document: LoanDocument) -> List[LoanDocument]:
         query = {"company_name": document.company_name}
         documents = self.collection.find(query)
         return [doc for doc in list(documents)]

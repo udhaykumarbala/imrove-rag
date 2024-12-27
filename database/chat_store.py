@@ -52,8 +52,8 @@ class ChatSession:
             "messages": [msg.to_dict() for msg in self.messages],
             "document_id": self.document_id,
             "document_info": self.document_info,
-            "created_at": self.created_at.isoformat(),
-            "last_interaction_at": self.last_interaction_at.isoformat(),
+            "created_at": self.created_at.timestamp(),
+            "last_interaction_at": self.last_interaction_at.timestamp(),
             "title": self.title
         }
 
@@ -118,7 +118,7 @@ class ChatStore:
         last_interaction_at = datetime.utcnow()
 
         update_fields = {
-            "messages": [msg.to_dict() for msg in all_messages],
+            "messages": [msg if isinstance(msg, dict) else msg.to_dict() for msg in all_messages],
             "last_interaction_at": last_interaction_at
         }
 

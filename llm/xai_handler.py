@@ -86,7 +86,7 @@ class XAIHandler(BaseLLM):
             )
         self.logger = logging.getLogger(__name__)
 
-    async def generate_response(self, intent: str, conversation: str, kb_result: str) -> str:
+    async def generate_response(self, intent, conversation_str, kb_result_str):
         try:
             prompt = ChatPromptTemplate.from_messages([("system", general_leading_prompt)])
             response = { "response": "" }
@@ -94,27 +94,30 @@ class XAIHandler(BaseLLM):
             if intent == 'specific_lender' or intent == 'filtered_lender_list':
                 prompt = ChatPromptTemplate.from_messages([("system", specified_lender_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation, "relevant_lenders": kb_result })
+                response = chain.invoke({ "conversation": conversation_str, "relevant_lenders": kb_result_str })
 
             elif intent == "need_requirements":
                 prompt = ChatPromptTemplate.from_messages([("system", need_requirement_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
+                response = chain.invoke({ "conversation": conversation_str })
 
             elif intent == "follow_up_lender":
                 prompt = ChatPromptTemplate.from_messages([("system", follow_up_lender_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
+                response = chain.invoke({ "conversation": conversation_str })
 
             else: 
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
+                response = chain.invoke({ "conversation": conversation_str })
 
             return response
 
         except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            raise
+            print(f"Error generating response: {e}")
+            return type('Response', (object,), {
+                "response": "I'm sorry, I couldn't generate a response. Please try again.",
+                "chat_title": ""
+            })()
     
     async def analyze_intent(self, message: str, conversation: list):
         try:
@@ -139,7 +142,6 @@ class XAIHandler(BaseLLM):
             prompt = ChatPromptTemplate.from_messages([("system", extract_document_info_prompt)])
             chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
             response = chain.invoke({"document_content": text})
-            print("response", response)
             return response
 
         except Exception as e:
@@ -192,12 +194,12 @@ class XAIHandler(BaseLLM):
             self.logger.error(f"Error extracting features from conversation: {e}")
             return "other"
 
-    def check_relevance(self, text: str) -> Dict[str, str]:
+    def check_relevance(self, text: str):
         try:
             prompt = ChatPromptTemplate.from_messages([("system", check_relevance_prompt)])
-            chain = prompt | self.client.with_structured_output(DocumentClassifierResponse)
+            chain = prompt | self.client.with_structured_output(CheckRelevanceResponse)
             response = chain.invoke({"document_content": text})
-            return response
+            return response.model_dump()
 
         except Exception as e:
             self.logger.error(f"Error extracting information from document: {e}")
@@ -262,7 +264,7 @@ class XAIVisionHandler:
             },
         ]
         ocr_content = self.client.chat.completions.create(
-            model="grok-vision-beta",
+            model="grok-2-vision-1212",
             messages=messages,
             temperature=0.01,
         )

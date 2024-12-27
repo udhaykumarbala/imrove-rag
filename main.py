@@ -38,7 +38,7 @@ app.add_middleware(
 # Initialize handlers and stores
 llm = XAIHandler(settings.XAI_API_KEY)
 doc_processor = DocumentProcessor()
-vector_store = VectorStore()
+# vector_store = VectorStore()
 redis_handler = RedisHandler(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
@@ -88,9 +88,11 @@ async def upload_document(
             "message": "The document is empty",
         }
 
+    document_id = str(uuid.uuid4())
+
     # Check if the document is relevant
     relevancy = llm.check_relevance(text)
-    if not relevancy.document_type == 'irrelevant_document':
+    if relevancy.get('document_type') == 'irrelevant_document':
         return {
             "session_id": session_id,
             "document_id": None,
@@ -104,17 +106,25 @@ async def upload_document(
     extracted_info = document_info.extracted_info
     
     # Check similar documents in the database
-    similar_documents = loan_store.find_similar_documents(extracted_info)
+    similar_documents = loan_store.find_similar_documents(LoanDocument(**extracted_info.model_dump()))
 
     # Check if the user has an existing session with all similar documents
     existing_session = None
-    for document in similar_documents:
+    for document_data in similar_documents:
+        document = LoanDocument.from_dict(document_data)
         existing_session = chat_store.get_session_by_document_id(user_id, document.document_id)
         if not existing_session:
             break
-    
+
     # If similar document exists and user has no existing session, return message
     if len(similar_documents) and not existing_session:
+        conversation = [
+            {"role": "user", "content": "Uploaded document"},
+            {"role": "assistant", "content": "Similar document already exists. Contact admin for more information."}
+        ]
+        redis_handler.save_conversation(session_id, conversation)
+        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
+        chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
         return {
             "session_id": session_id,
             "document_id": None,
@@ -122,12 +132,19 @@ async def upload_document(
         }
 
     if existing_session:
+        conversation = [
+            {"role": "user", "content": "Uploaded document"},
+            {"role": "assistant", "content": "Similar document already exists."}
+        ]
+        redis_handler.save_conversation(session_id, conversation)
+        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
+        chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
         return {
             "session_id": existing_session.session_id,
             "document_id": existing_session.document_id,
+            "message": "Similar document already exists."
         }
 
-    document_id = str(uuid.uuid4())
     loan_document = extracted_info.model_dump()
     loan_document["document_id"] = document_id
     loan_document["created_by"] = user_id
@@ -188,12 +205,13 @@ async def upload_chat(
             start = perf_counter()
             try: 
                 response_data = response.model_dump()
+                response_data["document_id"] = document_id
                 if not loan_store.get_document_by_id(document_id):
-                    loan_document = LoanDocument(response_data['extracted_info'])
+                    loan_document = LoanDocument(document_id=document_id, **response_data['extracted_info'])
                     loan_store.store_document(loan_document)
                 else:
-                    loan_document = LoanDocument(response_data['extracted_info'])
-                    loan_store.update_document(document_id, loan_document)
+                    loan_document = LoanDocument(document_id=document_id, **response_data['extracted_info'])
+                    loan_store.update_document(document_id, loan_document.to_dict())
                 logger.info(f"Loan document store operation took {perf_counter() - start:.2f} seconds")
             except Exception as e:
                 logger.error(f"Error handling loan store: {e}")
@@ -258,6 +276,16 @@ async def chat(
         kb_result_str = loan_store.search_documents(query)
 
     response = await llm.generate_response(intent, conversation_str, kb_result_str)
+    
+    if response is None:
+        return {
+            "response": "I'm sorry, I couldn't generate a response. Please try again.",
+            "session_id": session_id,
+            "intent": intent,
+            "intent_confidence": intent_response.confidence,
+            "intent_reason": intent_response.reason
+        }
+
     new_conversation = [
         {"role": "user", "content": request.message},
         {"role": "assistant", "content": response.response}
