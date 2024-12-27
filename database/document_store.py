@@ -22,8 +22,8 @@ class LoanDocument:
         interest_rates: str = "MISSING",
         points_charged: str = "MISSING",
         liquidity_requirements: str = "MISSING",
-        loan_to_cost_ratio: any = 0,
-        debt_service_coverage_ration: float = 0,
+        loan_to_cost_ratio: Optional[float] = 0,
+        debt_service_coverage_ratio: float = 0,
         loan_term: str = "MISSING",
         amortization: str = "MISSING",
         construction: str = "MISSING",
@@ -50,7 +50,7 @@ class LoanDocument:
         self.points_charged = points_charged
         self.liquidity_requirements = liquidity_requirements
         self.loan_to_cost_ratio = loan_to_cost_ratio
-        self.debt_service_coverage_ration = debt_service_coverage_ration
+        self.debt_service_coverage_ratio = debt_service_coverage_ratio
         self.loan_term = loan_term
         self.amortization = amortization
         self.construction = construction
@@ -79,7 +79,7 @@ class LoanDocument:
             "points_charged": self.points_charged,
             "liquidity_requirements": self.liquidity_requirements,
             "loan_to_cost_ratio": self.loan_to_cost_ratio,
-            "debt_service_coverage_ration": self.debt_service_coverage_ration,
+            "debt_service_coverage_ratio": self.debt_service_coverage_ratio,
             "loan_term": self.loan_term,
             "amortization": self.amortization,
             "construction": self.construction,
@@ -109,7 +109,7 @@ class LoanDocument:
             points_charged=data.get("points_charged", "MISSING"),
             liquidity_requirements=data.get("liquidity_requirements", "MISSING"),
             loan_to_cost_ratio=data.get("loan_to_cost_ratio", 0),
-            debt_service_coverage_ration=data.get("debt_service_coverage_ration", 0),
+            debt_service_coverage_ratio=data.get("debt_service_coverage_ratio", 0),
             loan_term=data.get("loan_term", "MISSING"),
             amortization=data.get("amortization", "MISSING"),
             construction=data.get("construction", "MISSING"),
@@ -147,6 +147,10 @@ class LoanDocumentStore:
         return result.deleted_count > 0
 
     def search_documents(self, query: dict) -> list[LoanDocument]:
-        print("query is", query)
+        documents = self.collection.find(query)
+        return [doc for doc in list(documents)]
+
+    def find_similar_documents(self, document: LoanDocument, similarity_threshold: float = 0.8) -> List[LoanDocument]:
+        query = {"company_name": document.company_name}
         documents = self.collection.find(query)
         return [doc for doc in list(documents)]

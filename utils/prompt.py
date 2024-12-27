@@ -337,7 +337,7 @@ Each filter should follow the given structure:
    - `points_charged`: Points or fees charged on the loan, expressed as a percentage of the loan amount.
    - `liquidity_requirements`: Minimum liquidity required by the borrower to qualify for the loan.
    - `loan_to_cost_ratio`: Loan-to-Cost (LTC) ratio, expressed as a percentage.
-   - `debt_service_coverage_ration`: Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.
+   - `debt_service_coverage_ratio`: Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations.
    - `loan_term`: Duration of the loan in months or years.
    - `amortization`: Amortization schedule, specifying how the loan will be repaid.
    - `construction`: Indicates whether the loan is applicable for construction projects (yes/no).
@@ -360,4 +360,22 @@ $$$
 "{conversation_history}"
 $$$
 
+'''
+
+check_relevance_prompt = '''
+You are an advanced document classifier tasked with analyzing document content (delimited by `%%%`) to categorize it into one of the following classes:
+1. **relevant_document**: The document contains information related to loans, lending, or financial services.
+2. **irrelevant_document**: The document does not pertain to loans or financial services.
+
+Follow these guidelines to ensure accurate classification:
+1. **Analyze Content**: Review the document content to identify loan-specific terms, phrases, or financial information.
+2. **Identify Loan-Related Information**: Look for details such as loan types, interest rates, credit scores, loan amounts, or financial terms.
+3. **Consider Context**: Take into account the overall context and structure of the document to determine its primary focus.
+4. Provide your classification in **parsable JSON format**.
+
+**Goal**: Accurately classify the document based on its content to streamline further processing or categorization.
+
+%%%
+"{document_content}"
+%%%
 '''
