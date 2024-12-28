@@ -20,6 +20,10 @@ class IntentResponse(BaseModel):
     confidence: str = Field(description="Confidence of the indentified intent based on user message (High/Medium/Low)")
     reason: str = Field(description="Brief explanation for the classification based on the user message and conversation history.")
 
+class CheckRelevanceResponse(BaseModel):
+    document_type: str = Field(description="Identified type of the document based on the content.")
+    confidence: str = Field(description="Confidence of the indentified type based on the content (High/Medium/Low)")
+
 class ChatResponse(BaseModel):
     response: str = Field(description="The response generated for the user based on their input, providing relevant information or assistance.")
     chat_title: str = Field(description="A short title less than 4 words for the conversation")
@@ -47,7 +51,7 @@ class DataFromDoc(BaseModel):
     points_charged: str = Field(description="Points or fees charged on the loan, often expressed as a percentage of the loan amount.", default="MISSING")
     liquidity_requirements: str = Field(description="Minimum liquidity required by the borrower to qualify for the loan.", default="MISSING")
     loan_to_cost_ratio: float = Field(description="Loan-to-Cost (LTC) ratio, typically expressed as a percentage. Convert it into float value", default=0)
-    debt_service_coverage_ration: float = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations. Convert it into float value", default=0)
+    debt_service_coverage_ratio: float = Field(description="Debt Service Coverage Ratio (DSCR), representing the minimum income to cover debt obligations. Convert it into float value", default=0)
     loan_term: str = Field(description="Duration of the loan, usually expressed in months or years.", default="MISSING")
     amortization: str = Field(description="Details of the amortization schedule, specifying how the loan will be repaid.", default="MISSING")
     construction: str = Field(description="Indicates whether the loan is applicable for construction projects (yes/no).", default="MISSING")
@@ -82,7 +86,7 @@ class XAIHandler(BaseLLM):
             )
         self.logger = logging.getLogger(__name__)
 
-    async def generate_response(self, intent: str, conversation: str, kb_result: str) -> str:
+    async def generate_response(self, intent, conversation_str, kb_result_str):
         try:
             prompt = ChatPromptTemplate.from_messages([("system", general_leading_prompt)])
             response = { "response": "" }
@@ -90,27 +94,30 @@ class XAIHandler(BaseLLM):
             if intent == 'specific_lender' or intent == 'filtered_lender_list':
                 prompt = ChatPromptTemplate.from_messages([("system", specified_lender_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation, "relevant_lenders": kb_result })
+                response = chain.invoke({ "conversation": conversation_str, "relevant_lenders": kb_result_str })
 
             elif intent == "need_requirements":
                 prompt = ChatPromptTemplate.from_messages([("system", need_requirement_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
+                response = chain.invoke({ "conversation": conversation_str })
 
             elif intent == "follow_up_lender":
                 prompt = ChatPromptTemplate.from_messages([("system", follow_up_lender_prompt)])
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
+                response = chain.invoke({ "conversation": conversation_str })
 
             else: 
                 chain = prompt | self.client.with_structured_output(ChatResponse)
-                response = chain.invoke({ "conversation": conversation })
+                response = chain.invoke({ "conversation": conversation_str })
 
             return response
 
         except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            raise
+            print(f"Error generating response: {e}")
+            return type('Response', (object,), {
+                "response": "I'm sorry, I couldn't generate a response. Please try again.",
+                "chat_title": ""
+            })()
     
     async def analyze_intent(self, message: str, conversation: list):
         try:
@@ -135,7 +142,6 @@ class XAIHandler(BaseLLM):
             prompt = ChatPromptTemplate.from_messages([("system", extract_document_info_prompt)])
             chain = prompt | self.client.with_structured_output(ExtractDocInfoResponse)
             response = chain.invoke({"document_content": text})
-            print("response", response)
             return response
 
         except Exception as e:
@@ -187,6 +193,17 @@ class XAIHandler(BaseLLM):
         except Exception as e:
             self.logger.error(f"Error extracting features from conversation: {e}")
             return "other"
+
+    def check_relevance(self, text: str):
+        try:
+            prompt = ChatPromptTemplate.from_messages([("system", check_relevance_prompt)])
+            chain = prompt | self.client.with_structured_output(CheckRelevanceResponse)
+            response = chain.invoke({"document_content": text})
+            return response.model_dump()
+
+        except Exception as e:
+            self.logger.error(f"Error extracting information from document: {e}")
+            return {}
 
     def _construct_mongo_query(self, filters):
         query = {}
@@ -247,7 +264,7 @@ class XAIVisionHandler:
             },
         ]
         ocr_content = self.client.chat.completions.create(
-            model="grok-vision-beta",
+            model="grok-2-vision-1212",
             messages=messages,
             temperature=0.01,
         )

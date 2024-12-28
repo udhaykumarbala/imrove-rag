@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pymongo import MongoClient
 from bson import ObjectId
 from config import settings
@@ -22,8 +22,8 @@ class LoanDocument:
         interest_rates: str = "MISSING",
         points_charged: str = "MISSING",
         liquidity_requirements: str = "MISSING",
-        loan_to_cost_ratio: any = 0,
-        debt_service_coverage_ration: float = 0,
+        loan_to_cost_ratio: Optional[float] = 0,
+        debt_service_coverage_ratio: float = 0,
         loan_term: str = "MISSING",
         amortization: str = "MISSING",
         construction: str = "MISSING",
@@ -50,13 +50,13 @@ class LoanDocument:
         self.points_charged = points_charged
         self.liquidity_requirements = liquidity_requirements
         self.loan_to_cost_ratio = loan_to_cost_ratio
-        self.debt_service_coverage_ration = debt_service_coverage_ration
+        self.debt_service_coverage_ratio = debt_service_coverage_ratio
         self.loan_term = loan_term
         self.amortization = amortization
         self.construction = construction
         self.value_add = value_add
         self.personal_guarantee = personal_guarantee
-        self.created_at = datetime.utcnow()
+        self.created_at = created_at
         self.updated_at = updated_at
         self.created_by = created_by
 
@@ -79,14 +79,14 @@ class LoanDocument:
             "points_charged": self.points_charged,
             "liquidity_requirements": self.liquidity_requirements,
             "loan_to_cost_ratio": self.loan_to_cost_ratio,
-            "debt_service_coverage_ration": self.debt_service_coverage_ration,
+            "debt_service_coverage_ratio": self.debt_service_coverage_ratio,
             "loan_term": self.loan_term,
             "amortization": self.amortization,
             "construction": self.construction,
             "value_add": self.value_add,
             "personal_guarantee": self.personal_guarantee,
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": self.created_at.timestamp(),
+            "updated_at": self.updated_at.timestamp(),
             "created_by": self.created_by,
         }
 
@@ -103,20 +103,20 @@ class LoanDocument:
             loan_to_value_ratio=data.get("loan_to_value_ratio", 0),
             application_requirements=data.get("application_requirements", "MISSING"),
             guidelines=data.get("guidelines", "MISSING"),
-            contact_information=data.get("contact_information", {"Person": "MISSING", "Phone": "MISSING", "Email": "MISSING"}),
+            contact_information=data.get("contact_information", {"person": "MISSING", "phone": "MISSING", "email": "MISSING"}),
             property_types=data.get("property_types", "MISSING"),
             interest_rates=data.get("interest_rates", "MISSING"),
             points_charged=data.get("points_charged", "MISSING"),
             liquidity_requirements=data.get("liquidity_requirements", "MISSING"),
             loan_to_cost_ratio=data.get("loan_to_cost_ratio", 0),
-            debt_service_coverage_ration=data.get("debt_service_coverage_ration", 0),
+            debt_service_coverage_ratio=data.get("debt_service_coverage_ratio", 0),
             loan_term=data.get("loan_term", "MISSING"),
             amortization=data.get("amortization", "MISSING"),
             construction=data.get("construction", "MISSING"),
             value_add=data.get("value_add", "MISSING"),
             personal_guarantee=data.get("personal_guarantee", "MISSING"),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
+            created_at=datetime.fromtimestamp(data["created_at"]),
+            updated_at=datetime.fromtimestamp(data["updated_at"]),
             created_by=data.get("created_by", "MISSING"),
         )
 
@@ -136,6 +136,8 @@ class LoanDocumentStore:
         return LoanDocument.from_dict(data) if data else None
 
     def update_document(self, document_id: str, updates: dict) -> bool:
+        if "document_id" in updates:
+            del updates["document_id"]  # Ensure document_id is not overwritten
         result = self.collection.update_one(
             {"document_id": document_id},
             {"$set": updates}
@@ -145,8 +147,12 @@ class LoanDocumentStore:
     def delete_document(self, document_id: str) -> bool:
         result = self.collection.delete_one({"document_id": document_id})
         return result.deleted_count > 0
-
+        
     def search_documents(self, query: dict) -> list[LoanDocument]:
-        print("query is", query)
+        documents = self.collection.find(query)
+        return [doc for doc in list(documents)]
+
+    def find_similar_documents(self, document: LoanDocument) -> List[LoanDocument]:
+        query = {"company_name": document.company_name}
         documents = self.collection.find(query)
         return [doc for doc in list(documents)]
