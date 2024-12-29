@@ -7,7 +7,7 @@ import logging
 from config import settings
 from llm.xai_handler import XAIHandler
 from document_processor.processor import DocumentProcessor
-# from database.vector_store import VectorStore
+#from database.vector_store import VectorStore
 from memory.redis_handler import RedisHandler
 from fastapi.middleware.cors import CORSMiddleware
 from utils.timing import timer
@@ -38,7 +38,7 @@ app.add_middleware(
 # Initialize handlers and stores
 llm = XAIHandler(settings.XAI_API_KEY)
 doc_processor = DocumentProcessor()
-# vector_store = VectorStore()
+#vector_store = VectorStore()
 redis_handler = RedisHandler(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
@@ -456,21 +456,53 @@ async def fetch_webhook(request: Request,session_id: Optional[str] = Header(None
         # Parse JSON payload from request
         payload = await request.json()
         user_id = payload.get('account')
-        print(user_id)
-
+        document_id = str(uuid.uuid4())
         # Clean payload recursively and remove 'html' keys
         cleaned_payload = clean_payload(payload)
-
         # Display only the cleaned payload in the terminal
-        print("✅ Cleaned Payload:")
-        print(cleaned_payload)
+        relevancy = llm.check_relevance(cleaned_payload)
+        if relevancy.get('document_type') == 'irrelevant_document':
+            return logger.info(f"The uploaded document is irrelevent")
         document_info = llm.extract_document_info(cleaned_payload)
-        # document_info = document_info.extracted_info
         extracted_info = document_info.extracted_info
-        print(f"🔥document_info: {extracted_info}")
-        document_id = str(uuid.uuid4())
+        similar_documents = loan_store.find_similar_documents(LoanDocument(**extracted_info.model_dump()))
+        existing_session = None
+        for document_data in similar_documents:
+            document = LoanDocument.from_dict(document_data)
+            existing_session = chat_store.get_session_by_document_id(user_id, document.document_id)
+            if not existing_session:
+                break
+
+        if len(similar_documents) and not existing_session:
+            conversation = [
+                {"role": "user", "content": "Uploaded document"},
+                {"role": "assistant", "content": "Similar document already exists. Contact admin for more information."}
+            ]
+            redis_handler.save_conversation(session_id, conversation)
+            chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
+                                      document_info=extracted_info.model_dump())
+            chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
+            logger.info(f"The document has been already uploaded ")
+            logger.info(f"The uploaded document is irrelevent")
+
+        if existing_session:
+            conversation = [
+                {"role": "user", "content": "Uploaded document"},
+                {"role": "assistant", "content": "Similar document already exists."}
+            ]
+            redis_handler.save_conversation(session_id, conversation)
+            chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
+                                      document_info=extracted_info.model_dump())
+            chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
+            logger.info(f"The uploaded document is irrelevent")
+
+        loan_document = extracted_info.model_dump()
+        loan_document["document_id"] = document_id
+        loan_document["created_by"] = user_id
+
         if document_info.consent:
-            vector_store.store_document(extracted_info.model_dump(), document_id)
+            loan_document = LoanDocument(**loan_document)
+            loan_store.store_document(loan_document)
 
         redis_handler.save_previous_info(session_id, extracted_info.model_dump())
         redis_handler.save_document_id(session_id, document_id)
@@ -493,7 +525,7 @@ async def fetch_webhook(request: Request,session_id: Optional[str] = Header(None
             "consent": document_info.consent,
             "is_updated": document_info.is_updated
         }
-        print(f"🔥response: {response}")
+        logger.info(f"Upload response: {response}")
         return response
     except Exception as e:
         logger.error(f"❌ Error processing webhook: {str(e)}")
@@ -501,6 +533,4 @@ async def fetch_webhook(request: Request,session_id: Optional[str] = Header(None
 
 if __name__ == "__main__":
     import uvicorn
-    # add cors
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
