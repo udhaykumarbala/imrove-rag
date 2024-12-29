@@ -77,7 +77,7 @@ async def upload_document(
         session_id = str(uuid.uuid4())
     content = await file.read()
     text = doc_processor.process_document(content, file.filename)
-    
+
     # Check if the document is empty
     if not text:
         return {
@@ -99,11 +99,11 @@ async def upload_document(
             "message": "The document is not relevant",
             "confidence": relevancy.confidence
         }
-    
+
     # Extract information using LLM
     document_info = llm.extract_document_info(text)
     extracted_info = document_info.extracted_info
-    
+
     # Check similar documents in the database
     similar_documents = loan_store.find_similar_documents(LoanDocument(**extracted_info.model_dump()))
 
@@ -174,14 +174,14 @@ async def upload_document(
     }
 
     logger.info(f"Upload response: {response}")
-    
+
     return response
 
 # Upload chat endpoint
 @app.post("/upload_chat")
 @timer
 async def upload_chat(
-    request: ChatRequest, 
+    request: ChatRequest,
     session_id: str = Header(...)
 ):
     try:
@@ -199,10 +199,10 @@ async def upload_chat(
             previous_info=previous_info
         )
         logger.info(f"LLM processing took {perf_counter() - start:.2f} seconds")
-        
+
         if response.consent:
             start = perf_counter()
-            try: 
+            try:
                 response_data = response.model_dump()
                 response_data["document_id"] = document_id
                 if not loan_store.get_document_by_id(document_id):
@@ -214,7 +214,7 @@ async def upload_chat(
                 logger.info(f"Loan document store operation took {perf_counter() - start:.2f} seconds")
             except Exception as e:
                 logger.error(f"Error handling loan store: {e}")
-        
+
         start = perf_counter()
         conversation.extend([
             {"role": "user", "content": request.message},
@@ -228,13 +228,13 @@ async def upload_chat(
             chat_store.update_session_document_info(session_id, response.extracted_info.model_dump())
 
         logger.info(f"Conversation update took {perf_counter() - start:.2f} seconds")
-        
+
         return {
             "extracted_info": response.extracted_info.model_dump() if response.extracted_info else None,
             "message": response.message,
             "session_id": session_id
         }
-        
+
     except Exception as e:
         logger.error(f"Error in upload_chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -253,7 +253,7 @@ async def chat(
         session_id = str(uuid.uuid4())
         is_new_session = True
         chat_store.create_session(user_id, session_id, type='chat')
-    
+
     conversation = redis_handler.get_conversation(session_id)
     conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation) if conversation else ""
 
@@ -271,11 +271,11 @@ async def chat(
 
     kb_result_str = ""
     if intent in ['specific_lender', 'filtered_lender_list']:
-        query = llm.extract_feature_from_conversation(request.message, conversation)  
+        query = llm.extract_feature_from_conversation(request.message, conversation)
         kb_result_str = loan_store.search_documents(query)
 
     response = await llm.generate_response(intent, conversation_str, kb_result_str)
-    
+
     if response is None:
         return {
             "response": "I'm sorry, I couldn't generate a response. Please try again.",
@@ -293,7 +293,7 @@ async def chat(
     conversation.extend(new_conversation)
     redis_handler.save_conversation(session_id, conversation)
     chat_store.update_session_messages(session_id, conversation, title=response.chat_title)
-    
+
     return {
         "response": response.response,
         "session_id": session_id,
@@ -342,7 +342,7 @@ async def login(email: str = Form(...)):
     mailer.set_subject("OTP for login", mail_body)
     mailer.set_plaintext_content(f"Your OTP is {otp}", mail_body)
     mailer.send(mail_body)
-    
+
     return {"message": "OTP sent successfully", "otp": otp, "expiry_time": expiry_time}
 
 # Resend OTP endpoint
@@ -379,7 +379,7 @@ async def verify_otp(
         user = user_store.create_user(email)
     else:
         user = user_store.get_user_by_email(email)
-    
+
     token = jwt.create_token(user.id)
 
     if user.name:
@@ -390,10 +390,10 @@ async def verify_otp(
 async def verify_otp(email: str = Form(...), otp: str = Form(...)):
     if not redis_handler.verify_otp(email, otp) and email != "test@test.com":
         return {"message": "Invalid OTP"}
-    
+
     user = user_store.get_user_by_email(email) or user_store.create_user(email)
     token = jwt.create_token(user.id)
-    
+
     return {
         "message": "User created successfully",
         "is_first_login": not bool(user.name),
@@ -462,71 +462,53 @@ async def fetch_webhook(request: Request,session_id: Optional[str] = Header(None
         # Display only the cleaned payload in the terminal
         relevancy = llm.check_relevance(cleaned_payload)
         if relevancy.get('document_type') == 'irrelevant_document':
-            return logger.info(f"The uploaded document is irrelevent")
+            logger.info("The document is irrelevant.")
+            return {"message": "The document is irrelevant"}
         document_info = llm.extract_document_info(cleaned_payload)
         extracted_info = document_info.extracted_info
         similar_documents = loan_store.find_similar_documents(LoanDocument(**extracted_info.model_dump()))
-        existing_session = None
-        for document_data in similar_documents:
-            document = LoanDocument.from_dict(document_data)
-            existing_session = chat_store.get_session_by_document_id(user_id, document.document_id)
-            if not existing_session:
-                break
+        print(similar_documents) # gives empty list as output
+        if similar_documents:
+            for doc in similar_documents:
+                print(doc.to_dict())  # Convert to dict for readable output
+        else:
+            print("No similar documents found.")
 
-        if len(similar_documents) and not existing_session:
+        if not similar_documents:
+            loan_document = extracted_info.model_dump()
+            loan_document["document_id"] = document_id
+            loan_document["created_by"] = user_id
+
+            if document_info.consent:
+                loan_document = LoanDocument(**loan_document)
+                loan_store.store_document(loan_document)
+
+            redis_handler.save_previous_info(session_id, extracted_info.model_dump())
+            redis_handler.save_document_id(session_id, document_id)
+
             conversation = [
                 {"role": "user", "content": "Uploaded document"},
-                {"role": "assistant", "content": "Similar document already exists. Contact admin for more information."}
+                {"role": "assistant", "content": document_info.message}
             ]
             redis_handler.save_conversation(session_id, conversation)
+
             chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
                                       document_info=extracted_info.model_dump())
             chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
-            logger.info(f"The document has been already uploaded ")
-            logger.info(f"The uploaded document is irrelevent")
+            response = {
+                "session_id": session_id,
+                "document_id": document_id,
+                "extracted_info": extracted_info.model_dump(),
+                "message": document_info.message,
+                "consent": document_info.consent,
+                "is_updated": document_info.is_updated
+            }
 
-        if existing_session:
-            conversation = [
-                {"role": "user", "content": "Uploaded document"},
-                {"role": "assistant", "content": "Similar document already exists."}
-            ]
-            redis_handler.save_conversation(session_id, conversation)
-            chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
-                                      document_info=extracted_info.model_dump())
-            chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
-            logger.info(f"The uploaded document is irrelevent")
+            logger.info(f"Upload response: {response}")
+            return response
+        else:
+            return {"message":"The document already exist"}
 
-        loan_document = extracted_info.model_dump()
-        loan_document["document_id"] = document_id
-        loan_document["created_by"] = user_id
-
-        if document_info.consent:
-            loan_document = LoanDocument(**loan_document)
-            loan_store.store_document(loan_document)
-
-        redis_handler.save_previous_info(session_id, extracted_info.model_dump())
-        redis_handler.save_document_id(session_id, document_id)
-
-        conversation = [
-            {"role": "user", "content": "Uploaded document"},
-            {"role": "assistant", "content": document_info.message}
-        ]
-        redis_handler.save_conversation(session_id, conversation)
-
-        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
-                                  document_info=extracted_info.model_dump())
-        chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
-
-        response = {
-            "session_id": session_id,
-            "document_id": document_id,
-            "extracted_info": extracted_info.model_dump(),
-            "message": document_info.message,
-            "consent": document_info.consent,
-            "is_updated": document_info.is_updated
-        }
-        logger.info(f"Upload response: {response}")
-        return response
     except Exception as e:
         logger.error(f"❌ Error processing webhook: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to process webhook")
