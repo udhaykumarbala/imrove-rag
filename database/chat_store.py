@@ -138,7 +138,7 @@ class ChatStore:
         )
         return result.modified_count > 0
 
-    def get_user_sessions(self, user_id: str, limit: int = 10) -> List[Dict]:
+    def get_user_sessions(self, user_id: str, limit: int = 25) -> List[Dict]:
         sessions_data = self.chat_sessions.find(
             {"user_id": user_id}
         ).sort("last_interaction_at", -1).limit(limit)
@@ -166,5 +166,12 @@ class ChatStore:
                     f"messages.{message_index}.rating": rating
                 }
             }
+        )
+        return result.modified_count > 0
+
+    def update_session_title(self, user_id: str, session_id: str, title: str) -> bool:
+        result = self.chat_sessions.update_one(
+            {"session_id": session_id, "user_id": user_id},
+            {"$set": {"title": title}}
         )
         return result.modified_count > 0

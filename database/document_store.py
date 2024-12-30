@@ -125,6 +125,15 @@ class LoanDocumentStore:
         self.client = MongoClient(settings.MONGODB_URL)
         self.db = self.client[settings.MONGO_DATABASE]
         self.collection = self.db.loan_documents
+        
+        # Create text index on relevant fields
+        self.collection.create_index([
+            ("lender_name", "text"),
+            ("loan_type", "text"),
+            ("loan_purpose", "text"),
+            ("property_type", "text"),
+            ("loan_terms", "text")
+        ])
 
     def store_document(self, document: LoanDocument) -> LoanDocument:
         loan_document = document.to_dict()
@@ -149,6 +158,7 @@ class LoanDocumentStore:
         return result.deleted_count > 0
         
     def search_documents(self, query: dict) -> list[LoanDocument]:
+        print(query)
         documents = self.collection.find(query)
         return [doc for doc in list(documents)]
 

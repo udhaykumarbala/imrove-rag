@@ -324,7 +324,7 @@ Each filter should follow the given structure:
    Use the following mapping of database fields:
    - `company_name`: Name of the company providing the loan services.
    - `loan_plans`: Details of the loan plans offered.
-   - `service_area`: Geographical regions where the company provides its loan services.
+   - `service_area`: Geographical regions where the company provides its loan services, give the state code.
    - `credit_score_requirements`: Minimum credit score required to qualify for the loan.
    - `loan_minimum_amount`: The minimum loan amount that can be availed.
    - `loan_maximum_amount`: The maximum loan amount that can be availed.
