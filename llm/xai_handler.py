@@ -147,7 +147,7 @@ class XAIHandler(BaseLLM):
         except Exception as e:
             self.logger.error(f"Error extracting information from document: {e}")
             return {}
-    
+
     def extract_document_info_from_conversation(self, prompt: str, conversation: List[Dict[str, str]], previous_info: Dict[str, str]) -> Dict[str, str]:
         try:
             # Format previous info as a readable string

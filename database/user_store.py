@@ -40,7 +40,7 @@ class UserStore:
         # Check if user already exists
         if self.get_user_by_email(email):
             raise ValueError("User with this email already exists")
-        
+
         user = User(email=email)
         self.users.insert_one(user.to_dict())
         return user
