@@ -4,10 +4,11 @@ import uuid
 from pydantic import BaseModel
 from time import perf_counter
 import logging
+
 from config import settings
 from llm.xai_handler import XAIHandler
 from document_processor.processor import DocumentProcessor
-#from database.vector_store import VectorStore
+# from database.vector_store import VectorStore
 from memory.redis_handler import RedisHandler
 from fastapi.middleware.cors import CORSMiddleware
 from utils.timing import timer
@@ -38,7 +39,7 @@ app.add_middleware(
 # Initialize handlers and stores
 llm = XAIHandler(settings.XAI_API_KEY)
 doc_processor = DocumentProcessor()
-#vector_store = VectorStore()
+# vector_store = VectorStore()
 redis_handler = RedisHandler(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
@@ -50,31 +51,36 @@ loan_store = LoanDocumentStore()
 jwt = JWT(settings.JWT_SECRET_KEY, "HS256")
 mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
 
+
 # Define request models
 class ChatRequest(BaseModel):
     message: str
     document_id: Optional[str] = None
     context_type: str = "both"  # default value
 
+
 class LoginRequest(BaseModel):
     email: str
+
 
 # Health check endpoint
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
+
 # Upload document endpoint
 @app.post("/upload")
 @timer
 async def upload_document(
-    file: UploadFile = File(...),
-    authorization: str = Header(...),
-    session_id: Optional[str] = Header(None)
+        file: UploadFile = File(...),
+        authorization: str = Header(...),
+        session_id: Optional[str] = Header(None)
 ):
     user_id = jwt.decode_token(authorization)["sub"]
     if not session_id:
         session_id = str(uuid.uuid4())
+
     content = await file.read()
     text = doc_processor.process_document(content, file.filename)
 
@@ -122,7 +128,8 @@ async def upload_document(
             {"role": "assistant", "content": "Similar document already exists. Contact admin for more information."}
         ]
         redis_handler.save_conversation(session_id, conversation)
-        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
+        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
+                                  document_info=extracted_info.model_dump())
         chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
         return {
             "session_id": session_id,
@@ -136,7 +143,8 @@ async def upload_document(
             {"role": "assistant", "content": "Similar document already exists."}
         ]
         redis_handler.save_conversation(session_id, conversation)
-        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
+        chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
+                                  document_info=extracted_info.model_dump())
         chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
         return {
             "session_id": existing_session.session_id,
@@ -161,7 +169,8 @@ async def upload_document(
     ]
     redis_handler.save_conversation(session_id, conversation)
 
-    chat_store.create_session(user_id, session_id, type='upload', document_id=document_id, document_info=extracted_info.model_dump())
+    chat_store.create_session(user_id, session_id, type='upload', document_id=document_id,
+                              document_info=extracted_info.model_dump())
     chat_store.update_session_messages(session_id, conversation, title=document_info.chat_title)
 
     response = {
@@ -177,12 +186,13 @@ async def upload_document(
 
     return response
 
+
 # Upload chat endpoint
 @app.post("/upload_chat")
 @timer
 async def upload_chat(
-    request: ChatRequest,
-    session_id: str = Header(...)
+        request: ChatRequest,
+        session_id: str = Header(...)
 ):
     try:
 
@@ -221,7 +231,7 @@ async def upload_chat(
             {"role": "assistant", "content": response.message}
         ])
         redis_handler.save_conversation(session_id, conversation)
-        chat_store.update_session_messages(session_id, conversation, "") # title is empty, so it will not be updated
+        chat_store.update_session_messages(session_id, conversation, "")  # title is empty, so it will not be updated
 
         if response.extracted_info:
             redis_handler.save_previous_info(session_id, response.extracted_info.model_dump())
@@ -239,13 +249,14 @@ async def upload_chat(
         logger.error(f"Error in upload_chat: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # Chat endpoint
 @app.post("/kv-chat")
 @timer
 async def chat(
-    request: ChatRequest,
-    authorization: str = Header(...),
-    session_id: Optional[str] = Header(None),
+        request: ChatRequest,
+        authorization: str = Header(...),
+        session_id: Optional[str] = Header(None),
 ):
     user_id = jwt.decode_token(authorization)["sub"]
     is_new_session = False
@@ -255,7 +266,8 @@ async def chat(
         chat_store.create_session(user_id, session_id, type='chat')
 
     conversation = redis_handler.get_conversation(session_id)
-    conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation) if conversation else ""
+    conversation_str = "\n".join(
+        f"{msg['role']}: {str(msg['content'])}" for msg in conversation) if conversation else ""
 
     intent_response = await llm.analyze_intent(request.message, conversation)
     intent = intent_response.intent
@@ -302,11 +314,13 @@ async def chat(
         "intent_reason": intent_response.reason
     }
 
+
 # Get user sessions endpoint
 @app.get("/sessions")
 async def get_sessions(authorization: str = Header(...), limit: int = 10):
     user_id = jwt.decode_token(authorization)["sub"]
     return chat_store.get_user_sessions(user_id, limit)
+
 
 # Get session details endpoint
 @app.get("/session")
@@ -319,11 +333,14 @@ async def get_session(authorization: str = Header(...), session_id: str = Header
         redis_handler.save_document_info(session_id, session.document_info)
     return session
 
+
 # Update message feedback endpoint
 @app.post("/update_message_feedback")
-async def update_message_feedback(authorization: str = Header(...), session_id: str = Header(...), message_index: int = Form(...), feedback: str = Form(...), rating: int = Form(...)):
+async def update_message_feedback(authorization: str = Header(...), session_id: str = Header(...),
+                                  message_index: int = Form(...), feedback: str = Form(...), rating: int = Form(...)):
     user_id = jwt.decode_token(authorization)["sub"]
     return chat_store.update_message_feedback(user_id, session_id, message_index, feedback, rating)
+
 
 # Login endpoint
 @app.post("/login")
@@ -345,6 +362,7 @@ async def login(email: str = Form(...)):
 
     return {"message": "OTP sent successfully", "otp": otp, "expiry_time": expiry_time}
 
+
 # Resend OTP endpoint
 @app.post("/resend_otp")
 async def resend_otp(email: str = Form(...)):
@@ -364,29 +382,9 @@ async def resend_otp(email: str = Form(...)):
     mailer.send(mail_body)
     return {"message": "OTP sent successfully", "otp": otp, "expiry_time": expiry_time}
 
+
 # Verify OTP endpoint
 @app.post("/verify_otp")
-async def verify_otp(
-    email: str = Form(...),
-    otp: str = Form(...)
-):
-
-    if not redis_handler.verify_otp(email, otp) and email != "test@test.com":
-        return {"message": "Invalid OTP"}
-
-    user = None
-    if not user_store.get_user_by_email(email):
-        user = user_store.create_user(email)
-    else:
-        user = user_store.get_user_by_email(email)
-
-    token = jwt.create_token(user.id)
-
-    if user.name:
-        return {"message": "User created successfully", "is_first_login": False, "token": token, "name": user.name}
-    else:
-        return {"message": "User created successfully", "is_first_login": True, "token": token, "name": ""}
-
 async def verify_otp(email: str = Form(...), otp: str = Form(...)):
     if not redis_handler.verify_otp(email, otp) and email != "test@test.com":
         return {"message": "Invalid OTP"}
@@ -401,6 +399,7 @@ async def verify_otp(email: str = Form(...), otp: str = Form(...)):
         "name": user.name or ""
     }
 
+
 # Update user endpoint
 @app.post("/update_user")
 async def update_user(authorization: str = Header(...), name: str = Form(...)):
@@ -409,6 +408,7 @@ async def update_user(authorization: str = Header(...), name: str = Form(...)):
     user.name = name
     user_store.update_user(user)
     return {"message": "User updated successfully", "user": user}
+
 
 def clean_text_data(text: str) -> str:
     if not text:
