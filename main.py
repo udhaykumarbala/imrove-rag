@@ -326,6 +326,12 @@ async def update_message_feedback(authorization: str = Header(...), session_id: 
     user_id = jwt.decode_token(authorization)["sub"]
     return chat_store.update_message_feedback(user_id, session_id, message_index, feedback, rating)
 
+# Update the title of the session
+@app.post("/update_session_title")
+async def update_session_title(authorization: str = Header(...), session_id: str = Header(...), title: str = Form(...)):
+    user_id = jwt.decode_token(authorization)["sub"]
+    return chat_store.update_session_title(user_id, session_id, title)
+
 # Login endpoint
 @app.post("/login")
 async def login(email: str = Form(...)):

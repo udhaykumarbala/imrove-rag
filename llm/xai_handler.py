@@ -206,34 +206,38 @@ class XAIHandler(BaseLLM):
             return {}
 
     def _construct_mongo_query(self, filters):
-        query = {}
+        regular_conditions = {}
+        text_search = None
+
         for condition in filters:
             field = condition["field"]
             operator = condition["operator"]
             value = condition["value"]
 
-            if operator == "=":
-                query[field] = value
+            if operator == "textsearch":
+                text_search = {"$text": {"$search": value}}
+            elif operator == "=":
+                regular_conditions[field] = value
             elif operator == "contains":
-                query[field] = {"$regex": value, "$options": "i"}  # Case-insensitive match
+                regular_conditions[field] = {"$regex": value, "$options": "i"}
             elif operator == "startswith":
-                query[field] = {"$regex": f"^{value}", "$options": "i"}  # Prefix match
-            elif operator == "textsearch":
-                query["$text"] = {"$search": value}  # Full-text search
-                
+                regular_conditions[field] = {"$regex": f"^{value}", "$options": "i"}
             elif operator == ">":
-                query[field] = {"$gt": float(value)}
+                regular_conditions[field] = {"$gt": float(value)}
             elif operator == "<":
-                query[field] = {"$lt": float(value)}
+                regular_conditions[field] = {"$lt": float(value)}
             elif operator == ">=":
-                query[field] = {"$gte": float(value)}
+                regular_conditions[field] = {"$gte": float(value)}
             elif operator == "<=":
-                query[field] = {"$lte": float(value)}
+                regular_conditions[field] = {"$lte": float(value)}
             elif operator == "between":
                 min_val, max_val = map(float, value.split(","))
-                query[field] = {"$gte": min_val, "$lte": max_val}
+                regular_conditions[field] = {"$gte": min_val, "$lte": max_val}
 
-        return query
+        # Combine regular conditions and text search with OR if text search exists
+        if text_search:
+            return {"$or": [regular_conditions, text_search]}
+        return regular_conditions
 
 class XAIVisionHandler:
     def __init__(self, api_key: str):
