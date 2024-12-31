@@ -12,6 +12,7 @@ from document_processor.processor import DocumentProcessor
 from memory.redis_handler import RedisHandler
 from fastapi.middleware.cors import CORSMiddleware
 from utils.timing import timer
+from utils.helper import document_to_promptable
 from database.user_store import UserStore
 from database.chat_store import ChatStore
 from database.document_store import LoanDocumentStore, LoanDocument
@@ -50,11 +51,10 @@ loan_store = LoanDocumentStore()
 jwt = JWT(settings.JWT_SECRET_KEY, "HS256")
 mailer = emails.NewEmail(settings.MAILERSEND_API_KEY)
 
-# Define request models
 class ChatRequest(BaseModel):
     message: str
     document_id: Optional[str] = None
-    context_type: str = "both"  # default value
+    context_type: str = "both"
 
 class LoginRequest(BaseModel):
     email: str
@@ -104,7 +104,7 @@ async def upload_document(
     # Extract information using LLM
     document_info = llm.extract_document_info(text)
     extracted_info = document_info.extracted_info
-    
+
     # Check similar documents in the database
     similar_documents = loan_store.find_similar_documents(LoanDocument(**extracted_info.model_dump()))
 
@@ -153,7 +153,7 @@ async def upload_document(
         loan_document = LoanDocument(**loan_document)
         loan_store.store_document(loan_document)
 
-    redis_handler.save_previous_info(session_id, extracted_info.model_dump())
+    redis_handler.save_previous_info(session_id, **loan_document)
     redis_handler.save_document_id(session_id, document_id)
 
     conversation = [
@@ -211,7 +211,10 @@ async def upload_chat(
                     loan_store.store_document(loan_document)
                 else:
                     loan_document = LoanDocument(document_id=document_id, **response_data['extracted_info'])
-                    loan_store.update_document(document_id, loan_document.to_dict())
+                    loan_document_dict = loan_document.to_dict()
+                    if '_id' in loan_document_dict:
+                        del loan_document_dict['_id']
+                    loan_store.update_document(document_id, loan_document_dict)
                 logger.info(f"Loan document store operation took {perf_counter() - start:.2f} seconds")
             except Exception as e:
                 logger.error(f"Error handling loan store: {e}")
@@ -256,7 +259,6 @@ async def chat(
         chat_store.create_session(user_id, session_id, type='chat')
     
     conversation = redis_handler.get_conversation(session_id)
-    conversation_str = "\n".join(f"{msg['role']}: {str(msg['content'])}" for msg in conversation) if conversation else ""
 
     intent_response = await llm.analyze_intent(request.message, conversation)
     intent = intent_response.intent
@@ -271,12 +273,24 @@ async def chat(
         }
 
     kb_result_str = ""
-    if intent in ['specific_lender', 'filtered_lender_list']:
-        query = llm.extract_feature_from_conversation(request.message, conversation)  
-        kb_result_str = loan_store.search_documents(query)
 
-    response = await llm.generate_response(intent, conversation_str, kb_result_str)
-    
+    if intent in ["follow_up_lender", "filtered_lender"]:
+        query = llm.extract_feature_from_conversation(request.message, conversation)
+        print("query", query)  
+        kb_result_str = loan_store.search_documents(query)
+        kb_result_str = document_to_promptable(kb_result_str)
+
+        if not kb_result_str:
+            return {
+                "response": "I'm sorry, I couldn't find any relevant documents. Please try again.",
+                "session_id": session_id,
+                "intent": intent,
+                "intent_confidence": intent_response.confidence,
+                "intent_reason": intent_response.reason
+            }
+
+    response = await llm.generate_response(intent, request.message, conversation, kb_result_str)
+
     if response is None:
         return {
             "response": "I'm sorry, I couldn't generate a response. Please try again.",
