@@ -150,10 +150,11 @@ async def upload_document(
     loan_document["created_by"] = user_id
 
     if document_info.consent:
-        loan_document = LoanDocument(**loan_document)
-        loan_store.store_document(loan_document)
+        loan_document_store = LoanDocument(**loan_document)
+        loan_store.store_document(loan_document_store)
 
-    redis_handler.save_previous_info(session_id, **loan_document)
+    print("loan_document", loan_document)
+    redis_handler.save_previous_info(session_id, loan_document)
     redis_handler.save_document_id(session_id, document_id)
 
     conversation = [
