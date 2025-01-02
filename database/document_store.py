@@ -158,7 +158,6 @@ class LoanDocumentStore:
         return result.deleted_count > 0
         
     def search_documents(self, query: dict) -> list[LoanDocument]:
-        print(query)
         documents = self.collection.find(query)
         return [doc for doc in list(documents)]
 

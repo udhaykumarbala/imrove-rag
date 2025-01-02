@@ -38,7 +38,7 @@ class RedisHandler:
 
     def get_previous_info(self, session_id: str) -> Dict[str, str]:
         previous_info = self.redis_client.get(f"previous_info:{session_id}")
-        return json.loads(previous_info) if previous_info else {}
+        return json.loads(previous_info) if previous_info else []
     
     def save_document_id(self, session_id: str, document_id: str):
         self.redis_client.setex(
