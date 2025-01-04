@@ -206,7 +206,7 @@ You are an intelligent assistant designed to extract filterable criteria from a 
    - `credit_score_requirements`: Minimum credit score required to qualify for the loan. (string)
    - `loan_minimum_amount`: The minimum loan amount that can be availed. (integer)
    - `loan_maximum_amount`: The maximum loan amount that can be availed. (integer)
-   - `loan_to_value_ratio`: Loan-to-Value (LTV) ratio, typically expressed as a percentage. (float)
+   - `loan_to_value_ratio`: Loan-to-Value (LTV) ratio, typically expressed as a percentage 0-100. (float)
    - `application_requirements`: List of documents or criteria required to apply for the loan. (string)
    - `guidelines`: Guidelines and instructions related to the loan application process. (string)
    - `contact_information`: Details for contacting the company, including name, phone, address, and email.
@@ -226,9 +226,10 @@ You are an intelligent assistant designed to extract filterable criteria from a 
    - Use `contains` for partial matches or keywords.
    - Use `>=`, `<=`, or `>` for numerical conditions (e.g., loan amount).
    - Use `textsearch` for free-form text searches and make it more dynamic and flexible.
-   - Use `range` for fields with a min and max of values (e.g., loan term, loan_to_value_ratio, debt_service_coverage_ratio, interest_rates).
+   - Use `range` for fields with a min and max of values (only on following fields, loan term, loan_to_value_ratio, loan_to_cost_ratio, debt_service_coverage_ratio, interest_rates, points_charged).
 6. **Value**: Extract the value or pattern for the filter directly from the user's message. For `range` operators, min_value, max_value = value
-
+7. **Loan amount query**: If the user is asking for loan amount, then the loan_minimum_amount should be checked less than or equal to the value of the loan amount and loan_maximum_amount should be more than or equal to the value of the loan amount.
+8. **LTV query**: LTV should be checked only if the user is asking for LTV.
 **Goal**: Provide a structured JSON object with filters extracted from the user's query to facilitate accurate and efficient loan lender searches.
 **Do not infer any additional filters beyond what is explicitly mentioned in the user's query.**
 '''
