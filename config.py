@@ -9,10 +9,9 @@ class Settings(BaseSettings):
     MONGO_DATABASE: str
     JWT_SECRET_KEY: str
     MAILERSEND_API_KEY:str
-    # JWT_EXPIRY_DAYS: int = 30
-    # SENDGRID_API_KEY: str
-    # SENDGRID_FROM_EMAIL: str
     XAI_API_KEY: str
+    PINECONE_API_KEY: str
+    PINECONE_INDEX_NAME: str
     class Config:
         env_file = ".env"
 

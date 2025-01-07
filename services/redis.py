@@ -1,23 +1,18 @@
-import redis
+from databases.redis import Redis
 import json
 import random
 import string
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
-from database.chat_store import ChatMessage
+from config import settings
 
-class RedisHandler:
-    def __init__(self, host: str, port: int, password: str = None):
-        self.redis_client = redis.Redis(
-            host=host,
-            port=port,
-            password=password,
-            decode_responses=True
-        )
+class RedisService:
+    def __init__(self):
+        self.redis_client = Redis().connect()
         self.OTP_LENGTH = 6
         self.EXPIRY_MINUTES = 5
-    
+
     def save_conversation(self, session_id: str, messages: List[Dict[str, str]]):
         self.redis_client.setex(
             f"conversation:{session_id}",

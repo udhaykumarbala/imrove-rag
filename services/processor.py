@@ -1,4 +1,3 @@
-import pytesseract
 from pdf2image import convert_from_path
 from pathlib import Path
 from docx import Document
@@ -7,9 +6,9 @@ from typing import Dict, Any
 import tempfile
 import os
 from config import settings
-from llm.xai_handler import XAIVisionHandler
+from services.xai import XAIVision
 
-llm = XAIVisionHandler(settings.XAI_API_KEY)
+llm = XAIVision()
 
 class DocumentProcessor:
     def process_document(self, file_content: bytes, filename: str) -> str:

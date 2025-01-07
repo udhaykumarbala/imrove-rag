@@ -1,40 +1,13 @@
+from models.user import User
 from datetime import datetime
 from typing import Optional
-from pymongo import MongoClient
+from databases.mongo import MongoDB
 from bson import ObjectId
-from config import settings
-
-class User:
-    def __init__(self, email: str, name: Optional[str] = None, user_id: Optional[str] = None, created: Optional[datetime] = None):
-        self.id = user_id or str(ObjectId())
-        self.email = email
-        self.name = name
-        self.created = created or datetime.utcnow()
-
-    def to_dict(self):
-        data = {
-            "_id": ObjectId(self.id),
-            "email": self.email,
-            "created": self.created
-        }
-        if self.name:
-            data["name"] = self.name
-        return data
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "User":
-        return cls(
-            email=data["email"],
-            name=data.get("name"),
-            user_id=str(data["_id"]),
-            created=data["created"]
-        )
 
 class UserStore:
     def __init__(self):
-        self.client = MongoClient(settings.MONGODB_URL)
-        self.db = self.client[settings.MONGO_DATABASE]
-        self.users = self.db.users
+        self.client = MongoDB().connect()
+        self.users = self.client.get_collection('users')
 
     def create_user(self, email: str) -> User:
         # Check if user already exists
